@@ -3,15 +3,15 @@ The Teradata Python Module is a freely available, open source, library for the P
 DOCUMENTION
 -----------
 
-The documentation of the Teradata Python Module is available on the <a href="https://developer.teradata.com/tools/reference/teradata-python-module">Teradata Developer Exchange</a>.
+Documentation for the Teradata Python Module is available on the <a href="https://developer.teradata.com/tools/reference/teradata-python-module">Teradata Developer Exchange</a>.
 
 UNIT TESTS
 ----------
 
-To execute the unit tests, you can run the following command.  
+To execute the unit tests, you can run the following command at the root of the project checkout.  
 
 python -m unittest discover -s test
 
-The unit tests use the connection information specified in test/udaexec.ini.
+The unit tests use the connection information specified in test/udaexec.ini.  The unit tests depend on Teradata ODBC being installed and also on access to Teradata REST Services.
 
 
