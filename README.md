@@ -1,7 +1,9 @@
-The Teradata Python module makes it easy to script interactions with a Teradata Database.  
-It provides a DevOps focused SQL Execution Engine that allows developers to focus on their 
-SQL and procedural logic without needing to worry about Operational requirements such 
-as external configuration, query banding, and logging.
+The Teradata Python Module is a freely available, open source, library for the Python programming language, whose aim is to make it easy to script powerful interactions with Teradata Database. It adopts the philosophy of udaSQL, providing a DevOps focused SQL Execution Engine that allows developers to focus on their SQL and procedural logic without worrying about Operational requirements such as external configuration, query banding, and logging.
+
+DOCUMENTION
+-----------
+
+The documentation of the Teradata Python Module is available on the <a href="https://developer.teradata.com/tools/reference/teradata-python-module">Teradata Developer Exchange</a>.
 
 UNIT TESTS
 ----------
