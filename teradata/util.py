@@ -260,28 +260,80 @@ class BteqScript:
     
     def __iter__(self):
         return bteqsplit(self.lines);
-        
+    
 def sqlsplit (sql, delimiter=";"):
-    """A generator function for splitting out SQL statements according to the specified delimiter.  Ignores delimiter when in SQL literals."""
-    tokens = re.split("(['\\" + delimiter + "])", sql if isString(sql) else delimiter.join(sql))
+    """A generator function for splitting out SQL statements according to the specified delimiter.  
+       Ignores delimiter when in strings or comments."""
+    tokens = re.split("(--.*|'|" + re.escape(delimiter) + "|\"|/\*|\*/)", sql if isString(sql) else delimiter.join(sql))
     statement = []
+    inComment = False
+    inString = False
     inQuote = False
     for t in tokens:
         if not t:
             continue
-        if not inQuote:
-            if t == delimiter:
-                sql = "".join(statement).strip();
-                if sql:
-                    yield sql
-                statement = []
-                continue
-            elif t == "'":
-                inQuote = True
+        if inComment:
+            if t == "*/":
+                inComment = False
+        elif inString:
+            if t == '"':
+                inString = False
+        elif inQuote:
+            if t == "'":
+                inQuote = False
+        elif t == delimiter:
+            sql = "".join(statement).strip();
+            if sql:
+                yield sql
+            statement = []
+            continue
         elif t == "'":
-            inQuote = False
+            inQuote = True
+        elif t == '"':
+            inString = True
+        elif t == "/*":
+            inComment = True
         statement.append(t)
     sql = "".join(statement).strip();
+    if sql:
+        yield sql
+        
+def linesplit (sql, newline="\n"):
+    """A generator function for splitting out SQL statements according to the specified delimiter.  
+       Ignores delimiter when in strings or comments."""
+    tokens = re.split("(--.*|'|" + re.escape(newline) + "|\"|/\*|\*/)", sql if isString(sql) else newline.join(sql))
+    statement = []
+    inComment = False
+    inString = False
+    inQuote = False
+    for t in tokens:
+        if inComment:
+            if t == "*/":
+                inComment = False
+            if t == newline:
+                sql = "".join(statement)
+                yield sql
+                statement = []
+                continue
+        elif inString:
+            if t == '"':
+                inString = False
+        elif inQuote:
+            if t == "'":
+                inQuote = False
+        elif t == newline:
+            sql = "".join(statement)
+            yield sql
+            statement = []
+            continue
+        elif t == "'":
+            inQuote = True
+        elif t == '"':
+            inString = True
+        elif t == "/*":
+            inComment = True
+        statement.append(t)
+    sql = "".join(statement)
     if sql:
         yield sql
         
@@ -386,3 +438,4 @@ class CommandLineArgument:
             self.targets = kwargs.pop("targets")
         self.args = args
         self.kwargs = kwargs
+        

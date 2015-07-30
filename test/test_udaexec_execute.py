@@ -127,7 +127,7 @@ class UdaExecExecuteTest ():
 			rows = conn.execute("SELECT * FROM ${sampleTable}").fetchall();
 			self.assertEqual(len(rows), 1)
 			self.assertEqual(rows[0].a, 23)
-			self.assertEqual(rows[0].b, 'This is a test;Making sure semi-colons in statements work.$')
+			self.assertEqual(rows[0].b, 'This is a test;Making sure semi-colons\nin statements work.$')
 			self.assertEqual(rows[0].e, decimal.Decimal("1.23456"))
 			self.assertEqual(rows[0].f, decimal.Decimal(789))			
 			
@@ -357,12 +357,12 @@ udaExec.checkpoint()
 
 def runTest (testName):
 	suite = unittest.TestSuite()
-	suite.addTest( UdaExecTest_ODBC(testName) )  # @UndefinedVariable
-	suite.addTest( UdaExecTest_HTTPS(testName) )  # @UndefinedVariable
+	suite.addTest( UdaExecExecuteTest_ODBC(testName) )  # @UndefinedVariable
+	suite.addTest( UdaExecExecuteTest_HTTPS(testName) )  # @UndefinedVariable
 	unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-	#runTest('testBteqScriptExecution')
-	unittest.main()
+	runTest('testSqlScriptExecution')
+	#unittest.main()
 	
 

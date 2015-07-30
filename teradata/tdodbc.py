@@ -607,7 +607,7 @@ class OdbcCursor (util.Cursor):
         checkStatus(rc, hStmt=self.hStmt, method="SQLFreeStmt - SQL_RESET_PARAMS")
         
 def _convertLineFeeds (query):
-    return "\r".join(util.sqlsplit(query, delimiter="\n"))
+    return "\r".join(util.linesplit(query))
         
 def rowIterator (cursor):
     """ Generator function for iterating over the rows in a result set. """
