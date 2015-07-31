@@ -653,4 +653,4 @@ def rowIterator (cursor):
                         val = _outputStr(buf)
             values.append(val)
         yield values
-    
+    cursor._free()
