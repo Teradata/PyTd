@@ -52,7 +52,7 @@ BINARY_TYPES=("BLOB", "BYTE", "GRAPHIC", "LONG VARGRAPHIC", "VARBYTE", "VARGRAPH
 def _getMs (m, num):
     ms = m.group(num)
     if ms:
-        ms = int(ms.rjust(6, "0"))
+        ms = int(ms.ljust(6, "0"))
     else:
         ms = 0
     return ms;

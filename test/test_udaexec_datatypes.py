@@ -38,13 +38,9 @@ class UdaExecDataTypesTest ():
 			conn.execute("INSERT INTO testStringDataTypes VALUES (?, ?, ?, ?, ?, ?)", [2, str(2), str(2), str(2) * 10, str(2) * 20, None])
 			conn.executemany("INSERT INTO testStringDataTypes VALUES (?, ?, ?, ?, ?, ?)", [(i, str(i % 10), str(i % 100), str(i) * 10, str(i) * 20, None) for i in range(3, 100)], batch=True)
 			for row in conn.execute("SELECT * FROM testStringDataTypes ORDER BY id"):
-				if self.dsn == "ODBC":
-					self.assertEqual(row.a, str(row.id % 10))
-					self.assertEqual(row.a2, str(row.id % 100).ljust(4))
-				else:
-					# REST-310 - REST adds extra space characters.
-					self.assertEqual(row.a.strip(), str(row.id % 10))
-					self.assertEqual(row.a2.strip(), str(row.id % 100))
+				# SEE REST-309 for more details about why the strip is required.
+				self.assertEqual(row.a.strip(), str(row.id % 10))
+				self.assertEqual(row.a2.strip(), str(row.id % 100))
 				self.assertEqual(row.b, str(row.id) * 10)
 				self.assertEqual(row.c, str(row.id) * 20)
 				self.assertIsNone(row.d)
@@ -141,24 +137,26 @@ class UdaExecDataTypesTest ():
 					timestampWithZone TIMESTAMP WITH TIME ZONE,
 					"time" TIME,
 					"timeWithZone" TIME WITH TIME ZONE,
-					"date" DATE)""")
+					"date" DATE,
+					timestamp3 TIMESTAMP(3))""")
 				
 				timestamp = datetime.datetime(2015, 5, 18, 12, 34, 56, 789000)
 				timestampWithZone = datetime.datetime(2015, 5, 18, 12, 34, 56, 789000, datatypes.TimeZone("-", 5, 0))
 				time = datetime.time(12, 34, 56, 789000)
 				timeWithZone = datetime.time(12, 34, 56, 789000, datatypes.TimeZone("+", 10, 30))
 				date = datetime.date(2015, 5, 18)
+				timestamp3 = datetime.datetime(2015, 5, 18, 12, 34, 56, 789000)
 				
-				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (?, ?, ?, ?, ?, ?, ?)", ("1", "TEST1", "2015-05-18 12:34:56.789", "2015-05-18 12:34:56.789-05:00", "12:34:56.789", "12:34:56.789+10:30", "2015-05-18"))
-				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (?, ?, ?, ?, ?, ?, ?)", (2, "TEST2", timestamp, timestampWithZone, time, timeWithZone, date))
-				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (3, 'TEST3', '2015-05-18 12:34:56.789', '2015-05-18 12:34:56.789-05:00', '12:34:56.789', '12:34:56.789+10:30', '2015-05-18')")
+				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (?, ?, ?, ?, ?, ?, ?, ?)", ("1", "TEST1", "2015-05-18 12:34:56.789", "2015-05-18 12:34:56.789-05:00", "12:34:56.789", "12:34:56.789+10:30", "2015-05-18", "2015-05-18 12:34:56.789"))
+				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (2, "TEST2", timestamp, timestampWithZone, time, timeWithZone, date, str(timestamp3)[:-3]))
+				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (3, 'TEST3', '2015-05-18 12:34:56.789', '2015-05-18 12:34:56.789-05:00', '12:34:56.789', '12:34:56.789+10:30', '2015-05-18', '2015-05-18 12:34:56.789')")
 				rowId = 0
 				for row in cursor.execute("SELECT * FROM testDateAndTimeDataTypes ORDER BY id"):
 					rowId += 1
 					self.assertEqual(row.id, rowId)
 					self.assertEqual(row.name, "TEST" + str(rowId))
 					count = 0
-					for t in (row.timestamp, row.timestampWithZone, row.time, row.timeWithZone, row.date):
+					for t in (row.timestamp, row.timestampWithZone, row.time, row.timeWithZone, row.date, row.timestamp3):
 						if count not in (2,3):
 							self.assertEqual(t.year, 2015)
 							self.assertEqual(t.month, 5)
@@ -394,12 +392,12 @@ udaExec.checkpoint()
 
 def runTest (testName):
 	suite = unittest.TestSuite()
-	suite.addTest( UdaExecTest_ODBC(testName) )  # @UndefinedVariable
-	suite.addTest( UdaExecTest_HTTPS(testName) )  # @UndefinedVariable
+	suite.addTest( UdaExecDataTypesTest_ODBC(testName) )  # @UndefinedVariable
+	suite.addTest( UdaExecDataTypesTest_HTTPS(testName) )  # @UndefinedVariable
 	unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-	#runTest('testPeriodDataTypes')
+	#runTest('testDateAndTimeDataTypes')
 	unittest.main()
 	
 
