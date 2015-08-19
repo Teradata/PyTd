@@ -229,7 +229,7 @@ class UdaExec:
                         self.runNumber = str(int(self.runNumber) + 1)
                     except:
                         logMsgs.append((logging.WARN, "Unable to increment run number ({}) in {}. Resetting run number to 1.".format(self.runNumber, self.runNumberFile)))
-                        self.runNumber = 1   
+                        self.runNumber = "1"   
                 else:
                     logMsgs.append((logging.WARN, "No run number found in {}. Resetting run number to 1.".format(self.runNumberFile)))    
             else:
