@@ -87,6 +87,24 @@ class UdaExecDataTypesTest ():
 					self.assertEqual(row.c, param[3])
 					self.assertEqual(row.d, param[4])
 					self.assertIsNone(row.e)
+					
+	def testMixedDataTypes(self):
+		# Test for GitHub issue #7 
+		# REST Does not support binary data types at this time.
+		if self.dsn == "ODBC":
+			with udaExec.connect(self.dsn, username=self.username, password=self.password) as conn:
+				self.assertIsNotNone(conn)
+				conn.execute("CREATE TABLE testByteDataType (id INTEGER, b BYTE(4), c CHAR(8) CHARACTER SET LATIN NOT CASESPECIFIC NOT NULL, d BYTE(4))")
+				conn.execute("INSERT INTO testByteDataType VALUES (1, ?, ?, ?)", (bytearray([0xAA, 0xBB, 0xCC, 0xDD]), "test", bytearray([0xDD, 0xCC, 0xBB, 0xAA])))
+				for row in conn.execute("SELECT * FROM testByteDataType WHERE id = 1"):
+					self.assertEqual(row.b, bytearray([0xAA, 0xBB, 0xCC, 0xDD]))
+					self.assertEqual(row.c.strip(), "test")
+					self.assertEqual(row.d, bytearray([0xDD, 0xCC, 0xBB, 0xAA]))
+				conn.execute("UPDATE testByteDataType SET b = ? WHERE c = ?", (bytearray([0xAA, 0xAA, 0xAA, 0xAA]), "test"))
+				for row in conn.execute("SELECT * FROM testByteDataType WHERE id = 1"):
+					self.assertEqual(row.b, bytearray([0xAA, 0xAA, 0xAA, 0xAA]))
+					self.assertEqual(row.c.strip(), "test")
+					self.assertEqual(row.d, bytearray([0xDD, 0xCC, 0xBB, 0xAA]))
 			
 	def testNumericDataTypes(self):
 		with udaExec.connect(self.dsn, username=self.username, password=self.password) as conn:
@@ -397,7 +415,7 @@ def runTest (testName):
 	unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-	#runTest('testDateAndTimeDataTypes')
+	#runTest('testMixedDataTypes')
 	unittest.main()
 	
 

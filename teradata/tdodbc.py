@@ -430,9 +430,9 @@ class OdbcCursor (util.Cursor):
                     raise InterfaceError("PARAMS_MISMATCH", "The number of supplied parameters ({}) does not match the expected number of parameters ({}).".format(len(p), numParams))
                 paramArray = []
                 lengthArray = []
-                valueType = SQL_C_WCHAR
-                paramType = SQL_WVARCHAR
                 for paramNum in range(0, numParams):
+                    valueType = SQL_C_WCHAR
+                    paramType = SQL_WVARCHAR
                     val = p[paramNum]
                     if dataTypes[paramNum] == SQL_WLONGVARCHAR:
                         paramType = SQL_WLONGVARCHAR
@@ -449,7 +449,7 @@ class OdbcCursor (util.Cursor):
                         param = byteArr.from_buffer(val)
                         inputOutputType = SQL_PARAM_INPUT
                         valueType = SQL_C_BINARY
-                        paramType = SQL_LONGVARBINARY
+                        paramType = dataTypes[paramNum]
                     else:
                         param = _inputStr(val)
                         inputOutputType = SQL_PARAM_INPUT
