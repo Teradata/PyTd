@@ -6,8 +6,6 @@ The Teradata Python Module is a freely available, open source, library for the P
 INSTALLATION
 ------------
 
-.. code-block:: bash
-
     [sudo] pip install teradata
 
 The module is hosted on PyPi: https://pypi.python.org/pypi/teradata
