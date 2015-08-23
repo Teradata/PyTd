@@ -52,7 +52,7 @@ BINARY_TYPES=("BLOB", "BYTE", "GRAPHIC", "LONG VARGRAPHIC", "VARBYTE", "VARGRAPH
 def _getMs (m, num):
     ms = m.group(num)
     if ms:
-        ms = int(ms.rjust(6, "0"))
+        ms = int(ms.ljust(6, "0"))
     else:
         ms = 0
     return ms;
@@ -179,7 +179,16 @@ class DefaultDataTypeConverter (DataTypeConverter):
         logger.trace("Converting \"%s\" to (%s, %s).", value, dataType, typeCode)
         if value is not None:
             if typeCode == NUMBER:
-                return NUMBER(value) 
+                try:
+                    return NUMBER(value)
+                except:
+                    # Handle infinity and NaN for older ODBC drivers.
+                    if value == "1.#INF":
+                        return NUMBER('Infinity')
+                    elif value == "-1.#INF":
+                        return NUMBER('-Infinity')
+                    else:
+                        return NUMBER('NaN')
             elif typeCode == Timestamp:
                 if util.isString(value):
                     return convertTimestamp(value)

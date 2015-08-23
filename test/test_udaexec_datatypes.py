@@ -19,7 +19,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-import unittest, sys, logging, os, decimal, datetime, teradata, json
+import unittest, sys, logging, os, decimal, datetime, teradata, json, math
 from teradata import util, datatypes
 
 class UdaExecDataTypesTest ():
@@ -38,13 +38,9 @@ class UdaExecDataTypesTest ():
 			conn.execute("INSERT INTO testStringDataTypes VALUES (?, ?, ?, ?, ?, ?)", [2, str(2), str(2), str(2) * 10, str(2) * 20, None])
 			conn.executemany("INSERT INTO testStringDataTypes VALUES (?, ?, ?, ?, ?, ?)", [(i, str(i % 10), str(i % 100), str(i) * 10, str(i) * 20, None) for i in range(3, 100)], batch=True)
 			for row in conn.execute("SELECT * FROM testStringDataTypes ORDER BY id"):
-				if self.dsn == "ODBC":
-					self.assertEqual(row.a, str(row.id % 10))
-					self.assertEqual(row.a2, str(row.id % 100).ljust(4))
-				else:
-					# REST-310 - REST adds extra space characters.
-					self.assertEqual(row.a.strip(), str(row.id % 10))
-					self.assertEqual(row.a2.strip(), str(row.id % 100))
+				# SEE REST-309 for more details about why the strip is required.
+				self.assertEqual(row.a.strip(), str(row.id % 10))
+				self.assertEqual(row.a2.strip(), str(row.id % 100))
 				self.assertEqual(row.b, str(row.id) * 10)
 				self.assertEqual(row.c, str(row.id) * 20)
 				self.assertIsNone(row.d)
@@ -91,6 +87,24 @@ class UdaExecDataTypesTest ():
 					self.assertEqual(row.c, param[3])
 					self.assertEqual(row.d, param[4])
 					self.assertIsNone(row.e)
+					
+	def testMixedDataTypes(self):
+		# Test for GitHub issue #7 
+		# REST Does not support binary data types at this time.
+		if self.dsn == "ODBC":
+			with udaExec.connect(self.dsn, username=self.username, password=self.password) as conn:
+				self.assertIsNotNone(conn)
+				conn.execute("CREATE TABLE testByteDataType (id INTEGER, b BYTE(4), c CHAR(8) CHARACTER SET LATIN NOT CASESPECIFIC NOT NULL, d BYTE(4))")
+				conn.execute("INSERT INTO testByteDataType VALUES (1, ?, ?, ?)", (bytearray([0xAA, 0xBB, 0xCC, 0xDD]), "test", bytearray([0xDD, 0xCC, 0xBB, 0xAA])))
+				for row in conn.execute("SELECT * FROM testByteDataType WHERE id = 1"):
+					self.assertEqual(row.b, bytearray([0xAA, 0xBB, 0xCC, 0xDD]))
+					self.assertEqual(row.c.strip(), "test")
+					self.assertEqual(row.d, bytearray([0xDD, 0xCC, 0xBB, 0xAA]))
+				conn.execute("UPDATE testByteDataType SET b = ? WHERE c = ?", (bytearray([0xAA, 0xAA, 0xAA, 0xAA]), "test"))
+				for row in conn.execute("SELECT * FROM testByteDataType WHERE id = 1"):
+					self.assertEqual(row.b, bytearray([0xAA, 0xAA, 0xAA, 0xAA]))
+					self.assertEqual(row.c.strip(), "test")
+					self.assertEqual(row.d, bytearray([0xDD, 0xCC, 0xBB, 0xAA]))
 			
 	def testNumericDataTypes(self):
 		with udaExec.connect(self.dsn, username=self.username, password=self.password) as conn:
@@ -129,8 +143,61 @@ class UdaExecDataTypesTest ():
 						else:
 							self.assertEqual(col, decimal.Decimal("99999." + "9"*(count-5)))
 						count += 1
+			
+	def testInfinityAndNaN(self):
+		self.assertEqual(float('inf'), decimal.Decimal('Infinity'))
+		self.assertEqual(float('-inf'), decimal.Decimal('-Infinity'))
+		self.assertEqual(math.isnan(float('NaN')), math.isnan(decimal.Decimal('NaN')))
+		# Infinities are not support by REST.
+		if self.dsn == "ODBC":
+			with udaExec.connect(self.dsn, username=self.username, password=self.password) as conn:
+				self.assertIsNotNone(conn)
+				conn.execute("""CREATE TABLE testInfinity (
+					id INTEGER, 
+					a FLOAT)""")
+				for batch in (False, True):
+					offset = 6 if batch else 0
+					conn.executemany("INSERT INTO testInfinity (?, ?)",  ((1 + offset, float('Inf')), (2 + offset, decimal.Decimal('Infinity'))), batch=batch)			
+					for row in conn.execute("SELECT * FROM testInfinity WHERE id > ?",  (offset, )):
+						self.assertEqual(row[1], float('inf'))
+					conn.executemany("INSERT INTO testInfinity (?, ?)",  ((3 + offset, float('-Inf')), (4 + offset, decimal.Decimal('-Infinity'))), batch=batch)			
+					for row in conn.execute("SELECT * FROM testInfinity WHERE id > ?", (2 + offset, )):
+						self.assertEqual(row[1], float('-inf'))
+					conn.executemany("INSERT INTO testInfinity (?, ?)",  ((5 + offset, float('NaN')), (6 + offset, decimal.Decimal('NaN'))), batch=batch)				
+					for row in conn.execute("SELECT * FROM testInfinity WHERE id > ?", (4 + offset, )):
+						self.assertTrue(math.isnan(row[1]))
 						
-	def testDateAndTimeDataTypes(self):
+	def testFloatTypes(self):
+		with udaExec.connect(self.dsn, username=self.username, password=self.password) as conn:
+			self.assertIsNotNone(conn)
+			conn.execute("""CREATE TABLE testFloatTypes (
+				id INTEGER, 
+				a1 FLOAT, 
+				a2 FLOAT,
+				b1 REAL,
+				b2 REAL, 
+				c1 DOUBLE PRECISION,
+				c2 DOUBLE PRECISION)""")
+			params = []
+			paramCount = 5;
+			for i in range(2, paramCount):
+				f = i/(i - 1)
+				if self.dsn == 'ODBC':
+					params.append([i, f, decimal.Decimal(f), f, str(f), f, decimal.Decimal(f)])
+				else:
+					# REST doesn't like large str conversion of decimal.Decimal(f)
+					params.append([i, f, f, str(f), f, f, f])
+			params.append([paramCount, None, None, None, None, None, None])
+			for batch in (False, True):	
+				conn.executemany("INSERT INTO testFloatTypes (?, ?, ?, ?, ?, ?, ?)", params, batch=batch)
+				for row in conn.execute("SELECT * FROM testFloatTypes ORDER BY id"):
+					print(row)
+					self.assertEqual(row.a1, row.a2)
+					self.assertEqual(row.b1, row.b2)
+					self.assertEqual(row.c1, row.c2)
+				conn.execute("DELETE FROM testFloatTypes")
+						
+	def testDateAndTimeDataTypes(self):		
 		with udaExec.connect(self.dsn, username=self.username, password=self.password) as conn:
 			self.assertIsNotNone(conn)
 			with conn.cursor() as cursor:
@@ -141,24 +208,26 @@ class UdaExecDataTypesTest ():
 					timestampWithZone TIMESTAMP WITH TIME ZONE,
 					"time" TIME,
 					"timeWithZone" TIME WITH TIME ZONE,
-					"date" DATE)""")
+					"date" DATE,
+					timestamp3 TIMESTAMP(3))""")
 				
 				timestamp = datetime.datetime(2015, 5, 18, 12, 34, 56, 789000)
 				timestampWithZone = datetime.datetime(2015, 5, 18, 12, 34, 56, 789000, datatypes.TimeZone("-", 5, 0))
 				time = datetime.time(12, 34, 56, 789000)
 				timeWithZone = datetime.time(12, 34, 56, 789000, datatypes.TimeZone("+", 10, 30))
 				date = datetime.date(2015, 5, 18)
+				timestamp3 = datetime.datetime(2015, 5, 18, 12, 34, 56, 789000)
 				
-				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (?, ?, ?, ?, ?, ?, ?)", ("1", "TEST1", "2015-05-18 12:34:56.789", "2015-05-18 12:34:56.789-05:00", "12:34:56.789", "12:34:56.789+10:30", "2015-05-18"))
-				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (?, ?, ?, ?, ?, ?, ?)", (2, "TEST2", timestamp, timestampWithZone, time, timeWithZone, date))
-				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (3, 'TEST3', '2015-05-18 12:34:56.789', '2015-05-18 12:34:56.789-05:00', '12:34:56.789', '12:34:56.789+10:30', '2015-05-18')")
+				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (?, ?, ?, ?, ?, ?, ?, ?)", ("1", "TEST1", "2015-05-18 12:34:56.789", "2015-05-18 12:34:56.789-05:00", "12:34:56.789", "12:34:56.789+10:30", "2015-05-18", "2015-05-18 12:34:56.789"))
+				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (2, "TEST2", timestamp, timestampWithZone, time, timeWithZone, date, str(timestamp3)[:-3]))
+				cursor.execute("INSERT INTO testDateAndTimeDataTypes VALUES (3, 'TEST3', '2015-05-18 12:34:56.789', '2015-05-18 12:34:56.789-05:00', '12:34:56.789', '12:34:56.789+10:30', '2015-05-18', '2015-05-18 12:34:56.789')")
 				rowId = 0
 				for row in cursor.execute("SELECT * FROM testDateAndTimeDataTypes ORDER BY id"):
 					rowId += 1
 					self.assertEqual(row.id, rowId)
 					self.assertEqual(row.name, "TEST" + str(rowId))
 					count = 0
-					for t in (row.timestamp, row.timestampWithZone, row.time, row.timeWithZone, row.date):
+					for t in (row.timestamp, row.timestampWithZone, row.time, row.timeWithZone, row.date, row.timestamp3):
 						if count not in (2,3):
 							self.assertEqual(t.year, 2015)
 							self.assertEqual(t.month, 5)
@@ -394,12 +463,12 @@ udaExec.checkpoint()
 
 def runTest (testName):
 	suite = unittest.TestSuite()
-	suite.addTest( UdaExecTest_ODBC(testName) )  # @UndefinedVariable
-	suite.addTest( UdaExecTest_HTTPS(testName) )  # @UndefinedVariable
+	suite.addTest( UdaExecDataTypesTest_ODBC(testName) )  # @UndefinedVariable
+	suite.addTest( UdaExecDataTypesTest_HTTPS(testName) )  # @UndefinedVariable
 	unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-	#runTest('testPeriodDataTypes')
+	#runTest('testFloatTypes')
 	unittest.main()
 	
 

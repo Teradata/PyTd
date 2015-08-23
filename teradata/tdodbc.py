@@ -39,8 +39,11 @@ SQL_PARAM_TYPE_UNKNOWN, SQL_PARAM_INPUT, SQL_PARAM_INPUT_OUTPUT, SQL_PARAM_OUTPU
 SQL_ATTR_PARAM_BIND_TYPE, SQL_ATTR_PARAMS_PROCESSED_PTR, SQL_ATTR_PARAM_STATUS_PTR, SQL_ATTR_PARAMSET_SIZE = 18, 21, 20, 22 
 SQL_PARAM_BIND_BY_COLUMN = 0
 SQL_NULL_DATA, SQL_NTS, SQL_IS_POINTER, SQL_IS_UINTEGER, SQL_IS_INTEGER = -1, -3, -4, -5, -6
-SQL_C_BINARY, SQL_VARBINARY, SQL_LONGVARBINARY = -2, -3, -4
-SQL_C_WCHAR, SQL_WVARCHAR, SQL_WLONGVARCHAR = -8, -9, -10 
+SQL_C_BINARY, SQL_BINARY, SQL_VARBINARY, SQL_LONGVARBINARY = -2, -2, -3, -4
+SQL_C_WCHAR, SQL_WVARCHAR, SQL_WLONGVARCHAR = -8, -9, -10
+SQL_FLOAT = 6 
+SQL_C_FLOAT = SQL_REAL = 7
+SQL_C_DOUBLE = SQL_DOUBLE = 8
 SQL_DESC_TYPE_NAME = 14
 SQL_COMMIT, SQL_ROLLBACK = 0, 1
 
@@ -53,6 +56,8 @@ SQLULEN = ctypes.c_size_t
 SQLUSMALLINT = ctypes.c_ushort
 SQLSMALLINT = ctypes.c_short
 SQLINTEGER = ctypes.c_int
+SQLFLOAT = ctypes.c_float
+SQLDOUBLE = ctypes.c_double
 SQLBYTE = ctypes.c_ubyte
 SQLWCHAR = ctypes.c_wchar
 SQLRETURN = SQLSMALLINT
@@ -244,10 +249,12 @@ class OdbcConnection:
         self.dbType = dbType
         self.converter = dataTypeConverter
         connections.append(self)
-
+        
         # Build connect string
+        extraParams = set(k.lower() for k in kwargs)
         connectParams = collections.OrderedDict()
-        connectParams["DRIVER"] = dbType
+        if "dsn" not in extraParams:
+            connectParams["DRIVER"] = dbType
         if system:
             connectParams["DBCNAME"] = system
         if username:
@@ -430,46 +437,39 @@ class OdbcCursor (util.Cursor):
                     raise InterfaceError("PARAMS_MISMATCH", "The number of supplied parameters ({}) does not match the expected number of parameters ({}).".format(len(p), numParams))
                 paramArray = []
                 lengthArray = []
-                valueType = SQL_C_WCHAR
-                paramType = SQL_WVARCHAR
                 for paramNum in range(0, numParams):
                     val = p[paramNum]
-                    if dataTypes[paramNum] == SQL_WLONGVARCHAR:
-                        paramType = SQL_WLONGVARCHAR
-                    if isinstance(val, InOutParam):
-                        param = _inputStr(val.inValue, SMALL_BUFFER_SIZE if val.size is None else val.size)
-                        inputOutputType = SQL_PARAM_INPUT_OUTPUT
-                        val.setValueFunc(lambda: _outputStr(param))
-                    elif isinstance(val, OutParam):
-                        param = _createBuffer(SMALL_BUFFER_SIZE if val.size is None else val.size)
-                        inputOutputType = SQL_PARAM_OUTPUT
-                        val.setValueFunc(lambda: _outputStr(param))          
-                    elif isinstance(val, bytearray):
-                        byteArr = SQLBYTE * len(val)
-                        param = byteArr.from_buffer(val)
-                        inputOutputType = SQL_PARAM_INPUT
-                        valueType = SQL_C_BINARY
-                        paramType = SQL_LONGVARBINARY
-                    else:
-                        param = _inputStr(val)
-                        inputOutputType = SQL_PARAM_INPUT
+                    inputOutputType = _getInputOutputType(val);
+                    valueType, paramType = _getParamValueType (dataTypes[paramNum])
+                    param, length = _getParamValue (val, valueType, False)
                     paramArray.append(param)
-                    if isinstance(val, bytearray):
-                        numbytes = len(param)
-                        bufSize = SQLLEN(numbytes)
-                        lengthArray.append(SQLLEN(numbytes))
-                    elif param is not None:
-                        bufSize = SQLLEN(ctypes.sizeof(param))
-                        lengthArray.append(SQLLEN(SQL_NTS))
+                    if param is not None:
+                        if valueType == SQL_C_BINARY:
+                            bufSize = SQLLEN(length)
+                            lengthArray.append(SQLLEN(length))
+                            columnSize = SQLULEN(length)
+                        elif valueType == SQL_C_DOUBLE:
+                            bufSize = SQLLEN(length)
+                            lengthArray.append(SQLLEN(length))
+                            columnSize = SQLULEN(length)
+                            param = ADDR(param)
+                        else:
+                            bufSize = SQLLEN(ctypes.sizeof(param))
+                            lengthArray.append(SQLLEN(SQL_NTS))
+                            columnSize = SQLULEN(length)
                     else:
                         bufSize = SQLLEN(0)
+                        columnSize = SQLULEN(0)
                         lengthArray.append(SQLLEN(SQL_NULL_DATA))
-                    columnSize = SQLULEN(0) if param is None else SQLULEN(len(param))
                     logger.trace("Binding parameter %s...", paramNum + 1)          
                     rc = odbc.SQLBindParameter(self.hStmt, paramNum + 1, inputOutputType, valueType, paramType, columnSize, 0, param, bufSize, ADDR(lengthArray[paramNum]))
                     checkStatus(rc, hStmt=self.hStmt, method="SQLBindParameter")
                 logger.debug("Executing prepared statement.")
                 rc = odbc.SQLExecute(self.hStmt)
+                for paramNum in range(0, numParams):
+                    val = p[paramNum]
+                    if isinstance(val, OutParam):
+                        val.size = lengthArray[paramNum].value
                 checkStatus(rc, hStmt=self.hStmt, method="SQLExecute")   
         self._handleResults()
         return self
@@ -503,29 +503,20 @@ class OdbcCursor (util.Cursor):
                 raise InterfaceError("PARAMS_MISMATCH", "The number of supplied parameters ({}) does not match the expected number of parameters ({}).".format(len(p), numParams))
         for paramNum in range(0, numParams):
             p = []
-            valueType = SQL_C_WCHAR
-            paramType = SQL_WVARCHAR
-            if dataTypes[paramNum] == SQL_WLONGVARCHAR:
-                paramType = SQL_WLONGVARCHAR
+            valueType, paramType = _getParamValueType (dataTypes[paramNum])
             maxLen = 0
             for paramSetNum in range(0, paramSetSize):
-                val = params[paramSetNum][paramNum]
-                if isinstance(val, bytearray):
-                    valueType = SQL_C_BINARY
-                    paramType = SQL_LONGVARBINARY
-                    l = len(val)
-                    if l > maxLen:
-                        maxLen = l
-                else:    
-                    val = _convertParam(val)
-                    l = 0 if val is None else len(val)
-                    if l > maxLen:
-                        maxLen = l
-                p.append(val)
+                param, length = _getParamValue(params[paramSetNum][paramNum], valueType, True)
+                if length > maxLen:
+                    maxLen = length
+                p.append(param)
             logger.debug("Max length for parameter %s is %s.", paramNum + 1, maxLen)
             if valueType == SQL_C_BINARY:
                 valueSize = SQLLEN(maxLen)
                 paramArrays.append((SQLBYTE * (paramSetSize * maxLen))())
+            elif valueType == SQL_C_DOUBLE:
+                valueSize = SQLLEN(maxLen)
+                paramArrays.append((SQLDOUBLE * paramSetSize)())
             else:
                 maxLen += 1
                 valueSize = SQLLEN(ctypes.sizeof(SQLWCHAR) * maxLen)
@@ -534,17 +525,21 @@ class OdbcCursor (util.Cursor):
             for paramSetNum in range(0, paramSetSize):
                 index = paramSetNum * maxLen
                 if p[paramSetNum] is not None:
-                    for c in p[paramSetNum]:
-                        paramArrays[paramNum][index] = c
-                        index += 1
-                    if  valueType == SQL_C_BINARY:
-                        lengthArrays[paramNum][paramSetNum] = len(p[paramSetNum])
+                    if valueType == SQL_C_DOUBLE:
+                        paramArrays[paramNum][paramSetNum] = p[paramSetNum]
                     else:
-                        lengthArrays[paramNum][paramSetNum] = SQLLEN(SQL_NTS)
-                        paramArrays[paramNum][index] = _convertParam("\x00")[0] 
+                        for c in p[paramSetNum]:
+                            paramArrays[paramNum][index] = c
+                            index += 1
+                        if  valueType == SQL_C_BINARY:
+                            lengthArrays[paramNum][paramSetNum] = len(p[paramSetNum])
+                        else:
+                            lengthArrays[paramNum][paramSetNum] = SQLLEN(SQL_NTS)
+                            paramArrays[paramNum][index] = _convertParam("\x00")[0] 
                 else:
                     lengthArrays[paramNum][paramSetNum] = SQLLEN(SQL_NULL_DATA)
-                    paramArrays[paramNum][index] = _convertParam("\x00")[0]      
+                    if valueType == SQL_C_WCHAR:
+                        paramArrays[paramNum][index] = _convertParam("\x00")[0]      
             logger.trace("Binding parameter %s...", paramNum + 1)
             rc = odbc.SQLBindParameter(self.hStmt, paramNum + 1, SQL_PARAM_INPUT, valueType, paramType, SQLULEN(maxLen), 0,
                                        paramArrays[paramNum], valueSize, lengthArrays[paramNum])
@@ -591,7 +586,7 @@ class OdbcCursor (util.Cursor):
                 self.types.append((typeName, typeCode))
                 self.description.append((columnName, typeCode, None, columnSize.value, decimalDigits.value, None,
                                          nullable.value))
-            self.iterator = rowIterator(self)
+        self.iterator = rowIterator(self)
             
     def nextset (self):
         rc = odbc.SQLMoreResults(self.hStmt)
@@ -608,13 +603,81 @@ class OdbcCursor (util.Cursor):
         
 def _convertLineFeeds (query):
     return "\r".join(util.linesplit(query))
+
+def _getInputOutputType (val):
+    inputOutputType = SQL_PARAM_INPUT
+    if isinstance(val, InOutParam):
+        inputOutputType = SQL_PARAM_INPUT_OUTPUT
+    elif isinstance(val, OutParam):
+        inputOutputType = SQL_PARAM_OUTPUT
+    return inputOutputType
+
+def _getParamValueType (dataType):
+    valueType = SQL_C_WCHAR
+    paramType = SQL_WVARCHAR       
+    if dataType in (SQL_BINARY, SQL_VARBINARY, SQL_LONGVARBINARY): 
+        valueType = SQL_C_BINARY
+        paramType = dataType
+    elif dataType == SQL_WLONGVARCHAR:
+        paramType = SQL_WLONGVARCHAR
+    elif dataType in (SQL_FLOAT, SQL_DOUBLE, SQL_REAL):
+        valueType = SQL_C_DOUBLE
+        paramType = SQL_DOUBLE
+    return valueType, paramType
+
+def _getParamValue (val, valueType, batch):
+    length = 0
+    if val is None:
+        param = None         
+    elif valueType == SQL_C_BINARY:
+        ba = val
+        if isinstance (val, InOutParam):
+            ba = val.inValue
+        elif isinstance(val, OutParam):
+            ba = bytearray(SMALL_BUFFER_SIZE if val.size is None else val.size)
+        if not isinstance(ba, bytearray):
+            raise InterfaceError ("Expected bytearray for BINARY parameter.");
+        length = len(ba)
+        if batch:
+            param = ba
+        else:
+            byteArr = SQLBYTE * length
+            param = byteArr.from_buffer(ba)
+            if isinstance(val, OutParam):
+                val.setValueFunc(lambda: ba[:val.size])
+    elif valueType == SQL_C_DOUBLE:
+        f = val
+        if isinstance(val, InOutParam):
+            f = val.inValue
+        elif isinstance(val, OutParam):
+            f = float(0)
+        param = SQLDOUBLE(f if not util.isString(f) else float(f))
+        length = ctypes.sizeof(param)
+        if isinstance(val, OutParam):
+            val.setValueFunc(lambda: param.value)
+    else:
+        if batch:
+            param = _convertParam(val)
+            length = len(param)  
+        elif isinstance(val, InOutParam):
+            length = SMALL_BUFFER_SIZE if val.size is None else val.size
+            param = _inputStr(val.inValue, length)
+            val.setValueFunc(lambda: _outputStr(param))
+        elif isinstance(val, OutParam):
+            length = SMALL_BUFFER_SIZE if val.size is None else val.size
+            param = _createBuffer(length)
+            val.setValueFunc(lambda: _outputStr(param))
+        else:    
+            param = _inputStr(val)
+            length = len(param)  
+    return param, length
         
 def rowIterator (cursor):
     """ Generator function for iterating over the rows in a result set. """
     buf = _createBuffer(LARGE_BUFFER_SIZE)
     bufSize = ctypes.sizeof(buf)
     length = SQLLEN()
-    while True:
+    while cursor.description is not None:
         rc = odbc.SQLFetch(cursor.hStmt)
         checkStatus(rc, hStmt=cursor.hStmt, method="SQLFetch")
         if rc == SQL_NO_DATA:
