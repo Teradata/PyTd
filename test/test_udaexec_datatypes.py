@@ -19,7 +19,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-import unittest, sys, logging, os, decimal, datetime, teradata, json
+import unittest, sys, logging, os, decimal, datetime, teradata, json, math
 from teradata import util, datatypes
 
 class UdaExecDataTypesTest ():
@@ -143,8 +143,61 @@ class UdaExecDataTypesTest ():
 						else:
 							self.assertEqual(col, decimal.Decimal("99999." + "9"*(count-5)))
 						count += 1
+			
+	def testInfinityAndNaN(self):
+		self.assertEqual(float('inf'), decimal.Decimal('Infinity'))
+		self.assertEqual(float('-inf'), decimal.Decimal('-Infinity'))
+		self.assertEqual(math.isnan(float('NaN')), math.isnan(decimal.Decimal('NaN')))
+		# Infinities are not support by REST.
+		if self.dsn == "ODBC":
+			with udaExec.connect(self.dsn, username=self.username, password=self.password) as conn:
+				self.assertIsNotNone(conn)
+				conn.execute("""CREATE TABLE testInfinity (
+					id INTEGER, 
+					a FLOAT)""")
+				for batch in (False, True):
+					offset = 6 if batch else 0
+					conn.executemany("INSERT INTO testInfinity (?, ?)",  ((1 + offset, float('Inf')), (2 + offset, decimal.Decimal('Infinity'))), batch=batch)			
+					for row in conn.execute("SELECT * FROM testInfinity WHERE id > ?",  (offset, )):
+						self.assertEqual(row[1], float('inf'))
+					conn.executemany("INSERT INTO testInfinity (?, ?)",  ((3 + offset, float('-Inf')), (4 + offset, decimal.Decimal('-Infinity'))), batch=batch)			
+					for row in conn.execute("SELECT * FROM testInfinity WHERE id > ?", (2 + offset, )):
+						self.assertEqual(row[1], float('-inf'))
+					conn.executemany("INSERT INTO testInfinity (?, ?)",  ((5 + offset, float('NaN')), (6 + offset, decimal.Decimal('NaN'))), batch=batch)				
+					for row in conn.execute("SELECT * FROM testInfinity WHERE id > ?", (4 + offset, )):
+						self.assertTrue(math.isnan(row[1]))
 						
-	def testDateAndTimeDataTypes(self):
+	def testFloatTypes(self):
+		with udaExec.connect(self.dsn, username=self.username, password=self.password) as conn:
+			self.assertIsNotNone(conn)
+			conn.execute("""CREATE TABLE testFloatTypes (
+				id INTEGER, 
+				a1 FLOAT, 
+				a2 FLOAT,
+				b1 REAL,
+				b2 REAL, 
+				c1 DOUBLE PRECISION,
+				c2 DOUBLE PRECISION)""")
+			params = []
+			paramCount = 5;
+			for i in range(2, paramCount):
+				f = i/(i - 1)
+				if self.dsn == 'ODBC':
+					params.append([i, f, decimal.Decimal(f), f, str(f), f, decimal.Decimal(f)])
+				else:
+					# REST doesn't like large str conversion of decimal.Decimal(f)
+					params.append([i, f, f, str(f), f, f, f])
+			params.append([paramCount, None, None, None, None, None, None])
+			for batch in (False, True):	
+				conn.executemany("INSERT INTO testFloatTypes (?, ?, ?, ?, ?, ?, ?)", params, batch=batch)
+				for row in conn.execute("SELECT * FROM testFloatTypes ORDER BY id"):
+					print(row)
+					self.assertEqual(row.a1, row.a2)
+					self.assertEqual(row.b1, row.b2)
+					self.assertEqual(row.c1, row.c2)
+				conn.execute("DELETE FROM testFloatTypes")
+						
+	def testDateAndTimeDataTypes(self):		
 		with udaExec.connect(self.dsn, username=self.username, password=self.password) as conn:
 			self.assertIsNotNone(conn)
 			with conn.cursor() as cursor:
@@ -415,7 +468,7 @@ def runTest (testName):
 	unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-	#runTest('testMixedDataTypes')
+	#runTest('testFloatTypes')
 	unittest.main()
 	
 
