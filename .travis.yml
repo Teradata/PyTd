@@ -3,6 +3,6 @@ python:
   - "2.7"
   - "3.4"
 install:
-  - pip install flake8 . --use-mirrors 
+  - pip install flake8  
 script:
-  - "flake8 --show-source ."
+  - "flake8 --show-source teradata"
