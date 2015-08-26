@@ -4,7 +4,5 @@ python:
   - "3.4"
 install:
   - pip install flake8 . --use-mirrors 
-before_script:
-  - "flake8 --show-source --builtins=_ PyTd"
 script:
-  - echo "Need to figure what tests can run outside corproate network..."
+  - "flake8 --show-source ."
