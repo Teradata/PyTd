@@ -845,10 +845,11 @@ def rowIterator(cursor):
         # Get each column in the row.
         for col in range(1, len(cursor.description) + 1):
             val = None
-            binaryData = cursor.description[col - 1][1] == BINARY
             dataType = SQL_C_WCHAR
-            if binaryData:
+            if cursor.description[col - 1][1] == BINARY:
                 dataType = SQL_C_BINARY
+            elif cursor.types[col - 1][0] in datatypes.FLOAT_TYPES:
+                dataType = SQL_C_DOUBLE
             rc = odbc.SQLGetData(
                 cursor.hStmt, col, dataType, buf, bufSize, ADDR(length))
             sqlState = checkStatus(rc, hStmt=cursor.hStmt, method="SQLGetData")
@@ -858,7 +859,7 @@ def rowIterator(cursor):
                         "Data truncated. Calling SQLGetData to get next part "
                         "of data for column %s of size %s.",
                         col, length.value)
-                    if binaryData:
+                    if dataType == SQL_C_BINARY:
                         val = bytearray(length.value)
                         val[0:bufSize] = (
                             ctypes.c_ubyte * bufSize).from_buffer(buf)
@@ -881,9 +882,11 @@ def rowIterator(cursor):
                             val.append(_outputStr(buf))
                         val = "".join(val)
                 else:
-                    if binaryData:
+                    if dataType == SQL_C_BINARY:
                         val = bytearray(
                             (ctypes.c_ubyte * length.value).from_buffer(buf))
+                    elif dataType == SQL_C_DOUBLE:
+                        val = ctypes.c_double.from_buffer(buf).value
                     else:
                         val = _outputStr(buf)
             values.append(val)

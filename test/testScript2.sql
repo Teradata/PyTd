@@ -3,7 +3,7 @@
 CREATE TABLE ${sampleTable} (a INTEGER,
 	b VARCHAR(100),
 	c TIMESTAMP WITH TIME ZONE,
-	e FLOAT,
+	e NUMERIC(20,10),
 	f NUMERIC
 )|
 

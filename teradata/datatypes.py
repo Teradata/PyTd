@@ -50,6 +50,9 @@ periodRegEx = re.compile("\('(.*)',\s*'(.*)'\)")
 NUMBER_TYPES = ("BYTEINT", "BIGINT", "DECIMAL", "DOUBLE", "DOUBLE PRECISION",
                 "INTEGER", "NUMBER", "SMALLINT", "FLOAT", "INT", "NUMERIC",
                 "REAL")
+
+FLOAT_TYPES = ("FLOAT", "DOUBLE", "DOUBLE PRECISION", "REAL")
+
 BINARY_TYPES = (
     "BLOB", "BYTE", "GRAPHIC", "LONG VARGRAPHIC", "VARBYTE", "VARGRAPHIC")
 
@@ -215,6 +218,9 @@ class DefaultDataTypeConverter (DataTypeConverter):
 
     """Handles conversion of result set data types into python objects."""
 
+    def __init__(self, useFloat=False):
+        self.useFloat = useFloat
+
     def convertValue(self, dbType, dataType, typeCode, value):
         """Converts the value returned by the database into the desired
          python object."""
@@ -232,6 +238,8 @@ class DefaultDataTypeConverter (DataTypeConverter):
                         return NUMBER('-Infinity')
                     else:
                         return NUMBER('NaN')
+            elif typeCode == float:
+                return value if not util.isString else float(value)
             elif typeCode == Timestamp:
                 if util.isString(value):
                     return convertTimestamp(value)
@@ -273,6 +281,8 @@ class DefaultDataTypeConverter (DataTypeConverter):
         typeCode = STRING
         if dataType in NUMBER_TYPES:
             typeCode = NUMBER
+            if self.useFloat and dataType in FLOAT_TYPES:
+                typeCode = float
         elif dataType in BINARY_TYPES:
             typeCode = BINARY
         elif dataType.startswith("DATE"):

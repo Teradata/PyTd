@@ -8,7 +8,7 @@ CREATE TABLE ${sampleTable} (a INTEGER,
     /* THis is a comment */
 	b VARCHAR(100),
 	c TIMESTAMP WITH TIME ZONE,
-	e FLOAT,
+	e NUMERIC(20,10),
 	f NUMERIC
 );
 

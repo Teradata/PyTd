@@ -200,10 +200,10 @@ class UdaExecDataTypesTest ():
                 d BIGINT,
                 e DECIMAL(6,1),
                 f NUMERIC(7,2),
-                g FLOAT,
-                h REAL,
-                i DOUBLE PRECISION,
-                j NUMBER)""")
+                g NUMBER,
+                h FLOAT,
+                i REAL,
+                j DOUBLE PRECISION)""")
             conn.executemany(
                 "INSERT INTO testNumericDataTypes (?, ?, ?, ?, ?, ?, ?, ?, "
                 "?, ?, ?)",
@@ -231,10 +231,14 @@ class UdaExecDataTypesTest ():
                             pass
                         elif count < 6:
                             self.assertEqual(col, 10 ** count - 1)
-                        else:
+                        elif count < 9 or self.dsn != 'ODBC':
                             self.assertEqual(
                                 col, decimal.Decimal("99999." + "9" *
                                                      (count - 5)))
+                        else:
+                            self.assertEqual(
+                                col, float("99999." + "9" *
+                                           (count - 5)))
                         count += 1
 
     def testInfinityAndNaN(self):
@@ -277,41 +281,63 @@ class UdaExecDataTypesTest ():
                         self.assertTrue(math.isnan(row[1]))
 
     def testFloatTypes(self):
-        with udaExec.connect(self.dsn, username=self.username,
-                             password=self.password) as conn:
-            self.assertIsNotNone(conn)
-            conn.execute("""CREATE TABLE testFloatTypes (
-                id INTEGER,
-                a1 FLOAT,
-                a2 FLOAT,
-                b1 REAL,
-                b2 REAL,
-                c1 DOUBLE PRECISION,
-                c2 DOUBLE PRECISION)""")
-            params = []
-            paramCount = 5
-            for i in range(2, paramCount):
-                f = i / (i - 1)
-                if self.dsn == 'ODBC':
-                    params.append(
-                        [i, f, decimal.Decimal(f), f, str(f), f,
-                         decimal.Decimal(f)])
-                else:
-                    # REST doesn't like large str conversion of
-                    # decimal.Decimal(f)
-                    params.append([i, f, f, str(f), f, f, f])
-            params.append([paramCount, None, None, None, None, None, None])
-            for batch in (False, True):
-                conn.executemany(
-                    "INSERT INTO testFloatTypes (?, ?, ?, ?, ?, ?, ?)",
-                    params, batch=batch)
-                for row in conn.execute("SELECT * FROM testFloatTypes "
-                                        "ORDER BY id"):
-                    print(row)
-                    self.assertEqual(row.a1, row.a2)
-                    self.assertEqual(row.b1, row.b2)
-                    self.assertEqual(row.c1, row.c2)
-                conn.execute("DELETE FROM testFloatTypes")
+        for useFloat in (False, True):
+            with udaExec.connect(
+                self.dsn, username=self.username,
+                password=self.password,
+                dataTypeConverter=datatypes.DefaultDataTypeConverter(
+                    useFloat=useFloat)) as conn:
+                self.assertIsNotNone(conn)
+                conn.execute("""CREATE TABLE testFloatTypes (
+                    id INTEGER,
+                    a1 FLOAT,
+                    a2 FLOAT,
+                    b1 REAL,
+                    b2 REAL,
+                    c1 DOUBLE PRECISION,
+                    c2 DOUBLE PRECISION)""")
+                params = []
+                paramCount = 5
+                for i in range(2, paramCount):
+                    f = i / (i - 1)
+                    if self.dsn == 'ODBC':
+                        params.append(
+                            [i, f, decimal.Decimal(f), f, str(f), f,
+                             decimal.Decimal(f)])
+                    else:
+                        # REST doesn't like large str conversion of
+                        # decimal.Decimal(f)
+                        params.append([i, f, f, str(f), f, f, f])
+                params.append([paramCount, None, None, None, None, None, None])
+                f = math.sqrt(3)
+                self.assertEqual(f, decimal.Decimal(f))
+                self.assertEqual(f, float(decimal.Decimal(f)))
+                params.append([paramCount + 1, f, f, f, f, f, f])
+                for batch in (False, True):
+                    conn.executemany(
+                        "INSERT INTO testFloatTypes (?, ?, ?, ?, ?, ?, ?)",
+                        params, batch=batch)
+                    count = 0
+                    for row in conn.execute("SELECT * FROM testFloatTypes "
+                                            "ORDER BY id"):
+                        # REST-312 - floating point number precision is lost
+                        # when get float as a string from JDBC driver.
+                        if self.dsn == 'ODBC':
+                            self.assertEqual(row.a1, params[count][1])
+                            self.assertEqual(row.b1, params[count][1])
+                            self.assertEqual(row.c1, params[count][1])
+                        self.assertEqual(row.a1, row.a2)
+                        self.assertEqual(row.b1, row.b2)
+                        self.assertEqual(row.c1, row.c2)
+                        if row.a1 is not None:
+                            if useFloat:
+                                self.assertTrue(isinstance(row.a1, float))
+                            else:
+                                self.assertTrue(isinstance(row.a1,
+                                                           decimal.Decimal))
+                        count += 1
+                    conn.execute("DELETE FROM testFloatTypes")
+                conn.execute("DROP TABLE testFloatTypes")
 
     def testDateAndTimeDataTypes(self):
         with udaExec.connect(self.dsn, username=self.username,
@@ -808,5 +834,5 @@ def runTest(testName):
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testIntervalDataTypes')
+    # runTest('testFloatTypes')
     unittest.main()
