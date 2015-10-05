@@ -201,7 +201,7 @@ class UdaExecExecuteTest ():
                 "INSERT INTO testExecuteManyFetchMany \
                 VALUES (?, ?, CURRENT_TIMESTAMP)",
                 [(x, "{ \\[]" + str(x) + "\"}") for x in range(0, rowCount)],
-                batch=True)
+                batch=True, logParamFrequency=1000)
 
             row = cursor.execute(
                 "SELECT COUNT(*) FROM testExecuteManyFetchMany").fetchone()
@@ -422,7 +422,7 @@ class UdaExecExecuteTest ():
             self.assertEqual(
                 conn.execute(
                     "SELECT COUNT(*) FROM testExecuteWhileIterating"
-                    ).fetchone()[0], insertCount)
+                ).fetchone()[0], insertCount)
             for row in conn.cursor().execute(
                     "SELECT * FROM testExecuteWhileIterating"):
                 conn.execute(
@@ -432,7 +432,7 @@ class UdaExecExecuteTest ():
             self.assertEqual(count, insertCount)
             self.assertEqual(conn.execute(
                 "SELECT COUNT(*) FROM testExecuteWhileIterating"
-                ).fetchone()[0], 0)
+            ).fetchone()[0], 0)
 
     def testUdaExecMultipleThreads(self):
         threadCount = 5
@@ -545,5 +545,5 @@ def runTest(testName):
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    #runTest('testBteqScriptExecution')
+    # runTest('testExecuteManyFetchMany')
     unittest.main()

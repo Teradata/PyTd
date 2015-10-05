@@ -733,11 +733,14 @@ class UdaExecCursor:
                 "File:  %s", file)
 
     def _execute(self, func, query, params, runAlways=False,
-                 continueOnError=False, ignoreErrors=[], **kwargs):
+                 continueOnError=False, logParamFrequency=1,
+                 logParamCharLimit=80, ignoreErrors=[],
+                 **kwargs):
         self.skip = self.udaexec.skip and not runAlways
         if not self.skip:
             start = time.time()
-            paramStr = _getParamsString(params)
+            paramStr = _getParamsString(params, logParamFrequency,
+                                        logParamCharLimit)
             try:
                 query = self.udaexec.config.resolve(query)
                 func(query, params, **kwargs)
@@ -814,21 +817,35 @@ class UdaExecCursor:
         self.close()
 
 
-def _getParamsString(params):
+def _getParamsString(params, logParamFrequency=1, logParamCharLimit=80):
     paramsStr = ""
-    if params:
+    if params and logParamFrequency > 0:
         if isinstance(params[0], (list, tuple)):
+            index = 0
+            paramsStr = []
+            for p in params:
+                index += 1
+                if index == 1 or index % logParamFrequency == 0:
+                    paramsStr.append(_getParamString(p, logParamCharLimit,
+                                                     index))
+            if index != 1 and index % logParamFrequency != 0:
+                paramsStr.append(_getParamString(p, logParamCharLimit, index))
             paramsStr = u", Params: {}".format(
-                u"\n".join(_getParamString(p) for p in params))
+                u"\n".join(paramsStr))
         else:
-            paramsStr = u", Params: {}".format(_getParamString(params))
+            paramsStr = u", Params: {}".format(_getParamString(
+                params, logParamCharLimit))
     return paramsStr
 
 
-def _getParamString(params):
+def _getParamString(params, logParamCharLimit=80, index=None):
     paramsStr = []
     for p in params:
         p = repr(p)
-        p = (p[:75] + '...') if len(p) > 80 else p
+        if logParamCharLimit > 0 and len(p) > logParamCharLimit:
+            p = (p[:(logParamCharLimit)] + '...')
         paramsStr.append(p)
-    return u"[" + u",".join(paramsStr) + u"]"
+    prefix = u"["
+    if index is not None:
+        prefix = u"%s:[" % index
+    return prefix + u",".join(paramsStr) + u"]"
