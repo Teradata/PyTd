@@ -559,6 +559,7 @@ class UdaExecConfig:
                 else:
                     value = value.replace("$$", "$")
                 error = None
+                break
             except KeyError as e:
                 error = e
         if error is not None:
