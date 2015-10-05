@@ -545,5 +545,5 @@ def runTest(testName):
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testSqlScriptExecutionDelimiter')
+    #runTest('testBteqScriptExecution')
     unittest.main()

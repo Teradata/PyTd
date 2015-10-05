@@ -17,13 +17,13 @@ EMP_Name Char(10)
 
 INSERT INTO Sou_EMP_Tab
 (1, 'bala');
-INSERT INTO Sou_EMP_Tab
-(2, 'nawab');
 
-database DBC;
 .export report file=c:\p\hi.txt
 .set retlimit 4
-select * from DBCInfo;
+select 'test;'
+;
+select 'test' as "test;"
+;
 .export reset;
 
 .import vartext ',' file = c:\p\var.txt
@@ -36,7 +36,6 @@ select * from DBCInfo;
            i_dept(varchar(30))
 insert into tab_name(eid,ename,sal,grade,dept)
 values(:i_eid,:i_ename,:i_sal,:i_grade,:i_dept);*/
-.logoff;
 
-.QUIT
-
+INSERT INTO Sou_EMP_Tab
+(2, 'nawab')

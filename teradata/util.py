@@ -411,7 +411,10 @@ def bteqsplit(lines):
                 yield sql
             statement = []
             inStatement = False
-
+    if inStatement:
+        sql = "".join(statement).strip()
+        if sql:
+            yield sql
 
 def createTestCasePerDSN(testCase, baseCls, dataSourceNames):
     """A method for duplicating test cases, once for each named data source."""

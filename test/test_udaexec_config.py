@@ -62,9 +62,10 @@ class UdaExecConfigTest (unittest.TestCase):
         udaExec = self.udaExec
         self.assertEqual(udaExec.config['escapeTest'], 'this$isatest')
 
-    def testExcapeCharacterInDataSource(self):
+    def testEscapeCharacterInDataSource(self):
         section = self.udaExec.config.section("ESCAPE_TEST")
         self.assertEqual(section['password'], 'pa$$word')
+        self.assertEqual(section['escapeTest2'], 'this$isatest')
 
     def testConnectUsingBadDSN(self):
         with self.assertRaises(teradata.InterfaceError) as cm:
