@@ -159,9 +159,6 @@ class Cursor:
     def next(self):
         return self.__next__()
 
-    def __del__(self):
-        self.close()
-
     def __enter__(self):
         return self
 
