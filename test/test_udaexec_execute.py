@@ -149,7 +149,7 @@ class UdaExecExecuteTest ():
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0].a, 23)
             self.assertEqual(
-                rows[0].b, "This is a test;Making sure semi-colons\nin "
+                rows[0].b, "This -----  is a test;Making sure semi-colons\nin "
                 "statements work.$")
             self.assertEqual(rows[0].e, decimal.Decimal("1.23456"))
             self.assertEqual(rows[0].f, decimal.Decimal(789))
@@ -545,5 +545,5 @@ def runTest(testName):
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testExecuteManyFetchMany')
+    # runTest('testSqlScriptExecution')
     unittest.main()

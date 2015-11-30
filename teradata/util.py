@@ -295,10 +295,11 @@ class BteqScript:
 def sqlsplit(sql, delimiter=";"):
     """A generator function for splitting out SQL statements according to the
      specified delimiter. Ignores delimiter when in strings or comments."""
-    tokens = re.split("(--.*|'|" + re.escape(delimiter) + "|\"|/\*|\*/)",
+    tokens = re.split("(--|'|\n|" + re.escape(delimiter) + "|\"|/\*|\*/)",
                       sql if isString(sql) else delimiter.join(sql))
     statement = []
     inComment = False
+    inLineComment = False
     inString = False
     inQuote = False
     for t in tokens:
@@ -307,6 +308,9 @@ def sqlsplit(sql, delimiter=";"):
         if inComment:
             if t == "*/":
                 inComment = False
+        elif inLineComment:
+            if t == "\n":
+                inLineComment = False
         elif inString:
             if t == '"':
                 inString = False
@@ -325,6 +329,8 @@ def sqlsplit(sql, delimiter=";"):
             inString = True
         elif t == "/*":
             inComment = True
+        elif t == "--":
+            inLineComment = True
         statement.append(t)
     sql = "".join(statement).strip()
     if sql:
@@ -334,16 +340,25 @@ def sqlsplit(sql, delimiter=";"):
 def linesplit(sql, newline="\n"):
     """A generator function for splitting out SQL statements according to the
      specified delimiter. Ignores delimiter when in strings or comments."""
-    tokens = re.split("(--.*|'|" + re.escape(newline) + "|\"|/\*|\*/)",
+    tokens = re.split("(--|'|" + re.escape(newline) + "|\"|/\*|\*/)",
                       sql if isString(sql) else newline.join(sql))
     statement = []
     inComment = False
+    inLineComment = False
     inString = False
     inQuote = False
     for t in tokens:
         if inComment:
             if t == "*/":
                 inComment = False
+            if t == newline:
+                sql = "".join(statement)
+                yield sql
+                statement = []
+                continue
+        elif inLineComment:
+            if t == "\n":
+                inLineComment = False
             if t == newline:
                 sql = "".join(statement)
                 yield sql
@@ -366,6 +381,8 @@ def linesplit(sql, newline="\n"):
             inString = True
         elif t == "/*":
             inComment = True
+        elif t == "--":
+            inLineComment = True
         statement.append(t)
     sql = "".join(statement)
     if sql:
@@ -412,6 +429,7 @@ def bteqsplit(lines):
         sql = "".join(statement).strip()
         if sql:
             yield sql
+
 
 def createTestCasePerDSN(testCase, baseCls, dataSourceNames):
     """A method for duplicating test cases, once for each named data source."""

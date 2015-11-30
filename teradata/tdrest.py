@@ -89,7 +89,7 @@ class RestConnection:
                     CONFIG_ERROR, "Unsupported protocol: {}".format(protocol))
         self.template = RestTemplate(
             protocol, host, port, webContext, username, password,
-            accept='application/vnd.com.teradata.rest-v2.0+json',
+            accept='application/vnd.com.teradata.rest-v1.0+json',
             verifyCerts=util.booleanValue(verifyCerts), sslContext=sslContext)
         with self.template.connect() as conn:
             if not self.implicit:
