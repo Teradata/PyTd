@@ -21,18 +21,13 @@
 # SOFTWARE.
 from teradata import pulljson
 import unittest
-import sys
-
-if sys.version_info[0] == 2:
-    from StringIO import StringIO  # @UnresolvedImport #@UnusedImport
-else:
-    from io import StringIO  # @UnresolvedImport @UnusedImport @Reimport
+from io import BytesIO
 
 
 class TestJSONPullParser (unittest.TestCase):
 
     def testNextEvent(self):
-        stream = StringIO("""{"key1":"value", "key2":100, "key3":null,
+        stream = BytesIO(b"""{"key1":"value", "key2":100, "key3":null,
         "key4": true, "key5":false, "key6":-201.50E1, "key7":{"key8":"value2",
         "key9":null}, "key10":["value3", 10101010101010101010101, null,
         {} ] }""")
@@ -175,7 +170,7 @@ class TestJSONPullParser (unittest.TestCase):
         self.assertIsNone(event)
 
     def testDocumentIncomplete(self):
-        stream = StringIO('{"key":"value"')
+        stream = BytesIO(b'{"key":"value"')
         reader = pulljson.JSONPullParser(stream)
         event = reader.nextEvent()
         self.assertEqual(event.type, pulljson.START_OBJECT)
@@ -190,7 +185,7 @@ class TestJSONPullParser (unittest.TestCase):
             cm.exception.msg)
 
     def testEmptyName(self):
-        stream = StringIO('{:"value"}')
+        stream = BytesIO(b'{:"value"}')
         reader = pulljson.JSONPullParser(stream)
         event = reader.nextEvent()
         self.assertEqual(event.type, pulljson.START_OBJECT)
@@ -200,7 +195,7 @@ class TestJSONPullParser (unittest.TestCase):
             cm.exception.code, pulljson.JSON_SYNTAX_ERROR, cm.exception.msg)
 
     def testExtraWhiteSpace(self):
-        stream = StringIO('{\n\t "key"\n\t\t:   "\t value\n"}   ')
+        stream = BytesIO(b'{\n\t "key"\n\t\t:   "\t value\n"}   ')
         reader = pulljson.JSONPullParser(stream)
         event = reader.nextEvent()
         self.assertEqual(event.type, pulljson.START_OBJECT)
@@ -216,7 +211,7 @@ class TestJSONPullParser (unittest.TestCase):
         self.assertIsNone(event)
 
     def testEscapeCharacter(self):
-        stream = StringIO('{"\\"ke\\"y\\\\"  : "va\\"l\\"ue"}   ')
+        stream = BytesIO(b'{"\\"ke\\"y\\\\"  : "va\\"l\\"ue"}   ')
         reader = pulljson.JSONPullParser(stream)
         event = reader.nextEvent()
         self.assertEqual(event.type, pulljson.START_OBJECT)
@@ -232,7 +227,7 @@ class TestJSONPullParser (unittest.TestCase):
         self.assertIsNone(event)
 
     def testEmptyArray(self):
-        stream = StringIO('[]')
+        stream = BytesIO(b'[]')
         reader = pulljson.JSONPullParser(stream)
         event = reader.nextEvent()
         self.assertEqual(event.type, pulljson.START_ARRAY)
@@ -242,7 +237,7 @@ class TestJSONPullParser (unittest.TestCase):
         self.assertIsNone(event)
 
     def testMissingColon(self):
-        stream = StringIO('{"key" "value"}')
+        stream = BytesIO(b'{"key" "value"}')
         reader = pulljson.JSONPullParser(stream)
         event = reader.nextEvent()
         self.assertEqual(event.type, pulljson.START_OBJECT)
@@ -252,7 +247,7 @@ class TestJSONPullParser (unittest.TestCase):
             cm.exception.code, pulljson.JSON_SYNTAX_ERROR, cm.exception.msg)
 
     def testCommaInsteadOfColon(self):
-        stream = StringIO('{"key","value"}')
+        stream = BytesIO(b'{"key","value"}')
         reader = pulljson.JSONPullParser(stream)
         event = reader.nextEvent()
         self.assertEqual(event.type, pulljson.START_OBJECT)
@@ -262,7 +257,7 @@ class TestJSONPullParser (unittest.TestCase):
             cm.exception.code, pulljson.JSON_SYNTAX_ERROR, cm.exception.msg)
 
     def testColonInsteadOfComma(self):
-        stream = StringIO('["key":"value"]')
+        stream = BytesIO(b'["key":"value"]')
         reader = pulljson.JSONPullParser(stream)
         event = reader.nextEvent()
         self.assertEqual(event.type, pulljson.START_ARRAY)
@@ -272,7 +267,7 @@ class TestJSONPullParser (unittest.TestCase):
             cm.exception.code, pulljson.JSON_SYNTAX_ERROR, cm.exception.msg)
 
     def testNumberLiteral(self):
-        stream = StringIO('1')
+        stream = BytesIO(b'1')
         reader = pulljson.JSONPullParser(stream)
         with self.assertRaises(pulljson.JSONParseError) as cm:
             reader.nextEvent()
@@ -280,7 +275,7 @@ class TestJSONPullParser (unittest.TestCase):
             cm.exception.code, pulljson.JSON_SYNTAX_ERROR, cm.exception.msg)
 
     def testStringLiteral(self):
-        stream = StringIO('"This is a test"')
+        stream = BytesIO(b'"This is a test"')
         reader = pulljson.JSONPullParser(stream)
         with self.assertRaises(pulljson.JSONParseError) as cm:
             reader.nextEvent()
@@ -288,7 +283,7 @@ class TestJSONPullParser (unittest.TestCase):
             cm.exception.code, pulljson.JSON_SYNTAX_ERROR, cm.exception.msg)
 
     def testObjectMissingValue(self):
-        stream = StringIO('{"key":}')
+        stream = BytesIO(b'{"key":}')
         reader = pulljson.JSONPullParser(stream)
         event = reader.nextEvent()
         self.assertEqual(event.type, pulljson.START_OBJECT)
@@ -300,7 +295,7 @@ class TestJSONPullParser (unittest.TestCase):
             cm.exception.code, pulljson.JSON_SYNTAX_ERROR, cm.exception.msg)
 
     def testArrayMissingValue(self):
-        stream = StringIO('[1, ,2}')
+        stream = BytesIO(b'[1, ,2}')
         reader = pulljson.JSONPullParser(stream)
         event = reader.nextEvent()
         self.assertEqual(event.type, pulljson.START_ARRAY)
@@ -312,7 +307,7 @@ class TestJSONPullParser (unittest.TestCase):
             cm.exception.code, pulljson.JSON_SYNTAX_ERROR, cm.exception.msg)
 
     def testArrayInObject(self):
-        stream = StringIO('{[]}')
+        stream = BytesIO(b'{[]}')
         reader = pulljson.JSONPullParser(stream)
         event = reader.nextEvent()
         self.assertEqual(event.type, pulljson.START_OBJECT)
@@ -322,8 +317,8 @@ class TestJSONPullParser (unittest.TestCase):
             cm.exception.code, pulljson.JSON_SYNTAX_ERROR, cm.exception.msg)
 
     def testReadObject(self):
-        stream = StringIO(
-            '{"key1":[0,1,2,3,4,{"value":"5"}], "key2":\
+        stream = BytesIO(
+            b'{"key1":[0,1,2,3,4,{"value":"5"}], "key2":\
             {"key1":[0,1,2,3,4,{"value":"5"}]}}')
         reader = pulljson.JSONPullParser(stream)
         obj = reader.readObject()
@@ -338,7 +333,7 @@ class TestJSONPullParser (unittest.TestCase):
                 self.assertEqual(len(obj), 1)
 
     def testReadArray(self):
-        stream = StringIO('[0,1,2,3,4,[0,1,2,3,4,[0,1,2,3,4]],[0,1,2,3,4]]')
+        stream = BytesIO(b'[0,1,2,3,4,[0,1,2,3,4,[0,1,2,3,4]],[0,1,2,3,4]]')
         reader = pulljson.JSONPullParser(stream)
         arr = reader.readArray()
         self.assertEqual(len(arr), 7)
@@ -352,7 +347,7 @@ class TestJSONPullParser (unittest.TestCase):
             self.assertEqual(arr[6][i], i)
 
     def testArraySyntaxError(self):
-        stream = StringIO('[[0,1][0,1]]')
+        stream = BytesIO(b'[[0,1][0,1]]')
         reader = pulljson.JSONPullParser(stream)
         with self.assertRaises(pulljson.JSONParseError) as cm:
             reader.readArray()
@@ -360,9 +355,9 @@ class TestJSONPullParser (unittest.TestCase):
             cm.exception.code, pulljson.JSON_SYNTAX_ERROR, cm.exception.msg)
 
     def testIterateArray(self):
-        stream = StringIO(
-            '[{"key0}":["}\\"","\\"}","}"]}, {"key1}":["}","\\"}","}"]}, '
-            '{"key2}":["}","}","\\"}"]}]')
+        stream = BytesIO(
+            b'[{"key0}":["}\\"","\\"}","}"]}, {"key1}":["}","\\"}","}"]}, '
+            b'{"key2}":["}","}","\\"}"]}]')
         reader = pulljson.JSONPullParser(stream)
         i = 0
         for x in reader.expectArray():

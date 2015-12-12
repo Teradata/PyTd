@@ -445,7 +445,8 @@ def createTestCasePerDSN(testCase, baseCls, dataSourceNames):
 def setupTestUser(udaExec, dsn, user=None, perm=100000000):
     """A utility method for creating a test user to be use by unittests."""
     if user is None:
-        user = "py%std_%s_test" % (sys.version_info[0], getpass.getuser())
+        user = "py%s_%std_%s_test" % (
+            sys.version_info[0], sys.version_info[1], getpass.getuser())
     with udaExec.connect(dsn) as conn:
         try:
             conn.execute("DELETE DATABASE " + user)

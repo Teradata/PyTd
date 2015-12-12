@@ -63,10 +63,11 @@ JSON_UNEXPECTED_ELEMENT_ERROR = "JSON_UNEXPECTED_ELEMENT_ERROR"
 
 class JSONPullParser (object):
 
-    def __init__(self, stream, size=2 ** 16):
+    def __init__(self, stream, encoding="utf8", size=2 ** 16):
         """Initialize pull parser with a JSON stream."""
         self.stream = stream
         self.size = size
+        self.encoding = encoding
         self.node = None
         self.value = ""
         self.valueType = None
@@ -306,7 +307,8 @@ class JSONPullParser (object):
                                 else:
                                     self.value += token
                             except IndexError:
-                                data = self.stream.read(self.size)
+                                data = self.stream.read(
+                                    self.size).decode(self.encoding)
                                 if data == "":
                                     raise JSONParseError(
                                         JSON_INCOMPLETE_ERROR,
@@ -337,7 +339,7 @@ class JSONPullParser (object):
                                 JSON_SYNTAX_ERROR,
                                 "Unexpected token: " + token)
             except IndexError:
-                data = self.stream.read(self.size)
+                data = self.stream.read(self.size).decode(self.encoding)
                 if data == "":
                     if self.node is not None:
                         raise JSONParseError(
@@ -393,7 +395,7 @@ class JSONPullParser (object):
                             value += "".join(tokens[startIndex:tokenIndex])
                             raise StopIteration()
                 value += "".join(tokens[startIndex:])
-                data = self.stream.read(self.size)
+                data = self.stream.read(self.size).decode(self.encoding)
                 if data == "":
                     raise JSONParseError(
                         JSON_INCOMPLETE_ERROR, "Reached end of input before "
