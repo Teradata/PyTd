@@ -69,6 +69,13 @@ class InOutParam (OutParam):
 # Define exceptions
 
 
+class Warning(Exception):  # @ReservedAssignment
+
+    def __init__(self, msg):
+        self.args = (msg,)
+        self.msg = msg
+
+
 class Error(Exception):
 
     def __init__(self, msg):
@@ -96,6 +103,48 @@ class DatabaseError(Error):
         self.code = code
         self.msg = msg
         self.sqlState = sqlState
+
+
+class InternalError(DatabaseError):
+
+    def __init__(self, code, msg):
+        self.value = (code, msg)
+        self.args = (code, msg)
+
+
+class ProgrammingError(DatabaseError):
+
+    def __init__(self, code, msg):
+        self.value = (code, msg)
+        self.args = (code, msg)
+
+
+class DataError(DatabaseError):
+
+    def __init__(self, code, msg):
+        self.value = (code, msg)
+        self.args = (code, msg)
+
+
+class IntegrityError(DatabaseError):
+
+    def __init__(self, code, msg):
+        self.value = (code, msg)
+        self.args = (code, msg)
+
+
+class NotSupportedError(Error):
+
+    def __init__(self, code, msg):
+        self.value = (code, msg)
+        self.args = (code, msg)
+
+
+class OperationalError(DatabaseError):
+
+    def __init__(self, code, msg):
+        self.value = (code, msg)
+        self.args = (code, msg)
 
 # Definitions for types
 BINARY = bytearray
