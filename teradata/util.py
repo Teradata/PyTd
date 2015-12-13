@@ -62,6 +62,15 @@ def isString(value):
         return isinstance(value, str)  # @UndefinedVariable
 
 
+def toUnicode(string):
+    if not isString(string):
+        string = str(string)
+    if sys.version_info[0] == 2:
+        if isinstance(string, str):
+            string = string.decode("utf8")
+    return string
+
+
 def raiseIfNone(name, value):
     if not value:
         raise InterfaceError(

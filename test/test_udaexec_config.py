@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # The MIT License (MIT)
 #
 # Copyright (c) 2015 by Teradata
@@ -51,7 +52,7 @@ class UdaExecConfigTest (unittest.TestCase):
 
     def testConfig(self):
         udaExec = self.udaExec
-        self.assertEqual(udaExec.config['appName'], 'PyTdUnitTests')
+        self.assertEqual(udaExec.config['appName'], u'PyTdUnitTestsの')
         self.assertEqual(udaExec.config['version'], '1.00.00.01')
         self.assertEqual(udaExec.config['key1'], 'file1')
         self.assertEqual(udaExec.config['key2'], 'file2')

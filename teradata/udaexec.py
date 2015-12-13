@@ -35,6 +35,8 @@ import platform
 import getpass
 import subprocess
 import collections
+import codecs
+from .util import toUnicode
 from . import tdodbc, util, api, datatypes
 from . import tdrest  # @UnresolvedImport
 from .version import __version__  # @UnresolvedImport
@@ -77,8 +79,9 @@ class UdaExec:
                  systemConfigFile="/etc/udaexec.ini",
                  userConfigFile="~/udaexec.ini", appConfigFile="udaexec.ini",
                  configFiles=None, configSection="CONFIG",
-                 parseCmdLineArgs=True, gitPath="${gitPath}",
-                 production="${production}", odbcLibPath="${odbcLibPath}",
+                 configEncoding="utf8", parseCmdLineArgs=True,
+                 gitPath="${gitPath}", production="${production}",
+                 odbcLibPath="${odbcLibPath}",
                  dataTypeConverter=datatypes.DefaultDataTypeConverter()):
         """ Initializes the UdaExec framework """
         # Load configuration files.
@@ -87,8 +90,8 @@ class UdaExec:
             _appendConfigFiles(
                 configFiles, systemConfigFile, userConfigFile, appConfigFile)
         logMsgs = [(logging.INFO, "Initializing UdaExec...")]
-        self.config = UdaExecConfig(
-            configFiles, configSection, parseCmdLineArgs, logMsgs)
+        self.config = UdaExecConfig(configFiles, configEncoding,
+                                    configSection, parseCmdLineArgs, logMsgs)
         # Verify required configuration parameters are specified.
         self.config['appName'] = self.config.resolve(
             appName, errorMsg="appName is a required field, it must be "
@@ -111,7 +114,7 @@ class UdaExec:
                 int(self.config.resolve(logRetention, default="90")), logMsgs)
         # Log messages that were collected prior to logging being configured.
         for (level, msg) in logMsgs:
-            logger.log(level, msg)
+            logger.log(level, toUnicode(msg))
         self._initVersion(self.config.resolve(
             version, default=""), self.config.resolve(gitPath, default=""))
         self._initQueryBands(self.config.resolve(production, default="false"))
@@ -176,9 +179,9 @@ class UdaExec:
                 "Connection successful. Duration: %.3f seconds. Details: %s",
                 duration, paramsToLog)
             return conn
-        except Exception as e:
+        except Exception:
             logger.exception("Unable to create connection: %s", paramsToLog)
-            raise e
+            raise
 
     def checkpoint(self, checkpointName=None):
         """ Sets or clears the current checkpoint."""
@@ -390,34 +393,42 @@ class UdaExec:
         self.queryBands['UtilityVersion'] = __version__
 
     def __str__(self):
-        value = "Execution Details:\n/"
-        value += '*' * 80
-        value += "\n"
-        value += " * Application Name: {}\n".format(self.config['appName'])
-        value += " *          Version: {}\n".format(self.config['version'])
-        value += " *       Run Number: {}\n".format(self.runNumber)
-        value += " *             Host: {}\n".format(platform.node())
-        value += " *         Platform: {}\n".format(
+        value = u"Execution Details:\n/"
+        value += u'*' * 80
+        value += u"\n"
+        value += u" * Application Name: {}\n".format(
+            toUnicode(self.config['appName']))
+        value += u" *          Version: {}\n".format(
+            toUnicode(self.config['version']))
+        value += u" *       Run Number: {}\n".format(toUnicode(self.runNumber))
+        value += u" *             Host: {}\n".format(
+            toUnicode(platform.node()))
+        value += u" *         Platform: {}\n".format(
             platform.platform(aliased=True))
-        value += " *          OS User: {}\n".format(getpass.getuser())
-        value += " *   Python Version: {}\n".format(platform.python_version())
-        value += " *  Python Compiler: {}\n".format(platform.python_compiler())
-        value += " *     Python Build: {}\n".format(platform.python_build())
-        value += " *  UdaExec Version: {}\n".format(__version__)
-        value += " *     Program Name: {}\n".format(sys.argv[0])
-        value += " *      Working Dir: {}\n".format(os.getcwd())
+        value += u" *          OS User: {}\n".format(
+            toUnicode(getpass.getuser()))
+        value += u" *   Python Version: {}\n".format(platform.python_version())
+        value += u" *  Python Compiler: {}\n".format(
+            platform.python_compiler())
+        value += u" *     Python Build: {}\n".format(platform.python_build())
+        value += u" *  UdaExec Version: {}\n".format(__version__)
+        value += u" *     Program Name: {}\n".format(toUnicode(sys.argv[0]))
+        value += u" *      Working Dir: {}\n".format(toUnicode(os.getcwd()))
         if self.gitRevision:
-            value += " *      Git Version: {}\n".format(self.gitVersion)
-            value += " *     Git Revision: {}\n".format(self.gitRevision)
-            value += " *        Git Dirty: {} {}\n".format(
+            value += u" *      Git Version: {}\n".format(self.gitVersion)
+            value += u" *     Git Revision: {}\n".format(self.gitRevision)
+            value += u" *        Git Dirty: {} {}\n".format(
                 self.gitDirty, "" if not self.gitDirty else "[" +
                 ",".join(self.modifiedFiles) + "]")
         if self.configureLogging:
-            value += " *          Log Dir: {}\n".format(self.logDir)
-            value += " *         Log File: {}\n".format(self.logFile)
-        value += " *     Config Files: {}\n".format(self.config.configFiles)
-        value += " *      Query Bands: {}\n".format(
-            u";".join(u"{}={}".format(k, v)
+            value += u" *          Log Dir: {}\n".format(
+                toUnicode(self.logDir))
+            value += u" *         Log File: {}\n".format(
+                toUnicode(self.logFile))
+        value += u" *     Config Files: {}\n".format(
+            toUnicode(self.config.configFiles))
+        value += u" *      Query Bands: {}\n".format(
+            u";".join(u"{}={}".format(toUnicode(k), toUnicode(v))
                       for k, v in self.queryBands.items()))
         value += '*' * 80
         value += '/'
@@ -465,13 +476,14 @@ class UdaExecCheckpointManagerFileImpl (UdaExecCheckpointManager):
     def loadCheckpoint(self):
         resumeFromCheckpoint = None
         if os.path.isfile(self.file):
-            logger.info("Found checkpoint file: \"%s\"", self.file)
+            logger.info(u"Found checkpoint file: \"%s\"", toUnicode(self.file))
             with open(self.file, "r") as f:
                 resumeFromCheckpoint = f.readline()
             if not resumeFromCheckpoint:
-                logger.warn("No checkpoint found in %s.", self.file)
+                logger.warn(
+                    u"No checkpoint found in %s.", toUnicode(self.file))
         else:
-            logger.info("Checkpoint file not found: %s", self.file)
+            logger.info(u"Checkpoint file not found: %s", toUnicode(self.file))
         return resumeFromCheckpoint
 
     def saveCheckpoint(self, checkpointName):
@@ -496,17 +508,23 @@ class UdaExecConfig:
 
     """UdaExec configuration loader and resolver."""
 
-    def __init__(self, configFiles, configSection, parseCmdLineArgs, logMsgs):
+    def __init__(self, configFiles, encoding, configSection, parseCmdLineArgs,
+                 logMsgs):
         configParser = configparser.ConfigParser()
         configParser.optionxform = str
         configFiles = [os.path.expanduser(f) for f in configFiles]
-        self.configFiles = [str(os.path.abspath(
+        self.configFiles = [toUnicode(os.path.abspath(
             f)) + (": Found" if os.path.isfile(f) else ": Not Found")
             for f in configFiles]
         logMsgs.append(
             (logging.INFO,
              "Reading config files: {}".format(self.configFiles)))
-        configParser.read(configFiles)
+        if sys.version_info[0] == 2:
+            for f in configFiles:
+                if os.path.isfile(f):
+                    configParser.readfp(codecs.open(f, "r", encoding))
+        else:
+            configParser.read(configFiles, encoding)
         self.configSection = configSection
         self.sections = {configSection: {}}
         for section in configParser.sections():
@@ -517,8 +535,9 @@ class UdaExecConfig:
                     (key, val) = arg.split("=", 1)
                     key = key[2:]
                     logMsgs.append(
-                        (logging.DEBUG, "Configuration value was set via "
-                         "command line: {}={}".format(key, val)))
+                        (logging.DEBUG, u"Configuration value was set via "
+                         "command line: {}={}".format(toUnicode(key),
+                                                      toUnicode(val))))
                     self.sections[configSection][key] = val
 
     def __iter__(self):
@@ -592,12 +611,15 @@ class UdaExecConfig:
             keyLength = len(key)
             if keyLength > length:
                 length = keyLength
-        value = "Configuration Details:\n/"
-        value += '*' * 80
-        value += "\n"
+        value = u"Configuration Details:\n/"
+        value += u'*' * 80
+        value += u"\n"
         for key in sorted(self.sections[self.configSection]):
-            value += " * {}: {}\n".format(key.rjust(length), self.resolve(
-                "${" + key + "}") if 'password' not in key.lower() else 'XXXX')
+            value += u" * {}: {}\n".format(toUnicode(key.rjust(length)),
+                                           toUnicode(
+                                               self.resolve("${" + key + "}"))
+                                           if 'password' not in key.lower()
+                                           else u'XXXX')
         value += '*' * 80
         value += '/'
         return value
@@ -684,7 +706,7 @@ class UdaExecCursor:
                         "Procedure: %s, Params: %s", duration,
                         procname, params)
                     if not continueOnError:
-                        raise e
+                        raise
         else:
             logger.info(
                 "Skipping procedure, haven't reached resume checkpoint yet. "

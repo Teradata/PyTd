@@ -124,7 +124,7 @@ class RestConnection:
                 except InterfaceError as e:
                     # Ignore if the session is already closed.
                     if e.code != 404:
-                        raise e
+                        raise
             logger.info("Closing session: %s", self.sessionId)
             self.sessionId = None
             connections.remove(self)
@@ -144,7 +144,7 @@ class RestConnection:
                 cursor.execute("ROLLBACK")
             except DatabaseError as e:
                 if e.code != ERROR_USER_GENERATED_TRANSACTION_ABORT:
-                    raise e
+                    raise
 
     def cursor(self):
         return RestCursor(self)

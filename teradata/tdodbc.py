@@ -375,14 +375,15 @@ class OdbcConnection:
                     logger.debug("SELECT SESSION returned %s", self.sessionno)
                     if queryBands:
                         c.execute(u"SET QUERY_BAND = '{};' FOR SESSION".format(
-                            u";".join(u"{}={}".format(k, v) for k, v in
-                                      queryBands.items())),
+                            u";".join(u"{}={}".format(util.toUnicode(k),
+                                                      util.toUnicode(v))
+                                      for k, v in queryBands.items())),
                                   queryTimeout=QUERY_TIMEOUT)
                 self.commit()
                 logger.debug("Created session %s.", self.sessionno)
-        except Exception as e:
+        except Exception:
             self.close()
-            raise e
+            raise
 
     def close(self):
         """CLoses an ODBC Connection."""
