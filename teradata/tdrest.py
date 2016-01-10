@@ -400,8 +400,8 @@ class HttpConnection:
             raise InterfaceError(
                 REST_ERROR, 'Error accessing {}.  ERROR:  {}'.format(url, e))
         if response.status < 300:
-            return pulljson.JSONPullParser(io.TextIOWrapper(
-                HttpResponseIOWrapper(response), encoding="utf8"))
+            return pulljson.JSONPullParser(
+                HttpResponseAsUnicodeStream(response))
         if response.status < 400:
             raise InterfaceError(
                 response.status,
@@ -423,6 +423,19 @@ class HttpConnection:
                     ", Details:  " + str(errorDetails))
 
 
+class HttpResponseAsUnicodeStream:
+
+    def __init__(self, buf):
+        self.stream = io.TextIOWrapper(
+            HttpResponseIOWrapper(buf), encoding="utf8")
+
+    def read(self, size):
+        data = ""
+        if not self.stream.closed:
+            data = self.stream.read(size)
+        return data
+
+
 class HttpResponseIOWrapper:
 
     def __init__(self, buf):
@@ -438,14 +451,8 @@ class HttpResponseIOWrapper:
     def seekable(self):
         return False
 
-    def closed(self):
-        return self.closed
-
     def read1(self, n=-1):
-        return self.read(None if n == -1 else n)
+        return self.read(n)
 
     def read(self, size):
-        data = self.buf.read(size)
-        if data == "":
-            self.closed = True
-        return data
+        return self.buf.read(size)

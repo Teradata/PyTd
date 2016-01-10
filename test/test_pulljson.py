@@ -21,7 +21,12 @@
 # SOFTWARE.
 from teradata import pulljson
 import unittest
-from io import StringIO
+import sys
+
+if sys.version_info[0] == 2:
+    from StringIO import StringIO  # @UnresolvedImport #@UnusedImport
+else:
+    from io import StringIO  # @UnresolvedImport @UnusedImport @Reimport
 
 
 class TestJSONPullParser (unittest.TestCase):
