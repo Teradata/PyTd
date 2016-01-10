@@ -81,6 +81,12 @@ class UdaExecExecuteTest ():
                 self.assertEqual(cursor.description[1][1], teradata.STRING)
                 self.assertEqual(count, 3)
 
+    def testDefaultDatabase(self):
+        with udaExec.connect(self.dsn, username=self.username,
+                             password=self.password, database="DBC") as conn:
+            self.assertIsNotNone(conn)
+            conn.execute("SELECT * FROM DBCInfo")
+
     def testQueryBands(self):
         with udaExec.connect(self.dsn, username=self.username,
                              password=self.username,
@@ -545,5 +551,5 @@ def runTest(testName):
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testSqlScriptExecution')
+    # runTest('testDefaultDatabase')
     unittest.main()

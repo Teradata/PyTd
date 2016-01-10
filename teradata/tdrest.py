@@ -26,7 +26,6 @@ Teradata REST."""
 import atexit
 import base64
 import json
-import logging
 import ssl
 import sys
 import time
@@ -67,7 +66,7 @@ class RestConnection:
                  username=None, password=None, protocol='http', port=None,
                  webContext='/tdrest', autoCommit=False, implicit=False,
                  transactionMode='TERA', queryBands=None, charset=None,
-                 verifyCerts=True, sslContext=None,
+                 verifyCerts=True, sslContext=None, database=None,
                  dataTypeConverter=datatypes.DefaultDataTypeConverter()):
         self.dbType = dbType
         self.system = system
@@ -102,6 +101,8 @@ class RestConnection:
                     options['queryBands'] = queryBands
                 if charset:
                     options['charSet'] = charset
+                if database:
+                    options['defaultDatabase'] = database
                 try:
                     session = conn.post(
                         '/systems/{0}/sessions'.format(self.system),
