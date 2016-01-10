@@ -30,6 +30,7 @@ import logging
 import ssl
 import sys
 import time
+import io
 
 from . import pulljson, util, datatypes
 from .api import *  # @UnusedWildImport # noqa
@@ -183,7 +184,7 @@ class RestCursor (util.Cursor):
                     query += ", "
                 if isinstance(p, InOutParam):
                     inparams[0].append(p.inValue)
-                    # outparams.append(p.inValue)
+                    outparams.append(p.inValue)
                 elif isinstance(p, OutParam):
                     outparams.append(None)
                 else:
@@ -246,7 +247,7 @@ class RestCursor (util.Cursor):
         if outParams is not None:
             options['outParams'] = outParams
         if not self.connection.implicit:
-            options['session'] = int(self.connection.sessionId)
+            options['session'] = str(self.connection.sessionId)
         if queryTimeout is not None:
             options['queryTimeout'] = queryTimeout
             options['queueTimeout'] = queryTimeout
@@ -399,7 +400,8 @@ class HttpConnection:
             raise InterfaceError(
                 REST_ERROR, 'Error accessing {}.  ERROR:  {}'.format(url, e))
         if response.status < 300:
-            return pulljson.JSONPullParser(response)
+            return pulljson.JSONPullParser(io.TextIOWrapper(
+                HttpResponseIOWrapper(response), encoding="utf8"))
         if response.status < 400:
             raise InterfaceError(
                 response.status,
@@ -419,3 +421,31 @@ class HttpConnection:
                 raise InterfaceError(response.status, "HTTP Status: " + str(
                     response.status) + ", URL: " + url +
                     ", Details:  " + str(errorDetails))
+
+
+class HttpResponseIOWrapper:
+
+    def __init__(self, buf):
+        self.buf = buf
+        self.closed = False
+
+    def readable(self):
+        return True
+
+    def writable(self):
+        return False
+
+    def seekable(self):
+        return False
+
+    def closed(self):
+        return self.closed
+
+    def read1(self, n=-1):
+        return self.read(None if n == -1 else n)
+
+    def read(self, size):
+        data = self.buf.read(size)
+        if data == "":
+            self.closed = True
+        return data

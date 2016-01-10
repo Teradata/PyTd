@@ -45,7 +45,8 @@ hourToMinuteIntervalRegEx = re.compile("^(-?)(\d+):(\d+)$")
 hourToSecondIntervalRegEx = re.compile("^(-?)(\d+):(\d+):(\d+\.?\d*)$")
 minuteToSecondIntervalRegEx = re.compile("^(-?)(\d+):(\d+\.?\d*)$")
 secondIntervalRegEx = re.compile("^(-?)(\d+\.?\d*)$")
-periodRegEx = re.compile("\('(.*)',\s*'(.*)'\)")
+periodRegEx1 = re.compile("\('(.*)',\s*'(.*)'\)")
+periodRegEx2 = re.compile("ResultStruct:PERIOD\(.*\)\[(.*),\s*(.*)\]")
 
 NUMBER_TYPES = ("BYTEINT", "BIGINT", "DECIMAL", "DOUBLE", "DOUBLE PRECISION",
                 "INTEGER", "NUMBER", "SMALLINT", "FLOAT", "INT", "NUMERIC",
@@ -171,7 +172,9 @@ def convertInterval(dataType, value):
 
 
 def convertPeriod(dataType, value):
-    m = periodRegEx.match(value)
+    m = periodRegEx1.match(value)
+    if not m:
+        m = periodRegEx2.match(value)
     if m:
         if "TIMESTAMP" in dataType:
             start = convertTimestamp(m.group(1))

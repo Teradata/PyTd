@@ -789,7 +789,7 @@ class UdaExecCursor:
                         "Query Failed! Duration: %.3f seconds, Query: %s%s",
                         duration, query, paramStr)
                     if not continueOnError:
-                        raise e
+                        raise
         else:
             logger.info(
                 "Skipping query, haven't reached resume checkpoint yet.  "
