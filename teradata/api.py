@@ -25,6 +25,7 @@
 from .version import *  # noqa
 import datetime
 import decimal
+import logging
 
 # DB API 2.0 globals
 apilevel = "2.0"
@@ -32,6 +33,14 @@ threadsafety = 1
 paramstyle = 'qmark'
 
 CONFIG_ERROR = "CONFIG_ERROR"
+
+
+class NullHandler(logging.Handler):
+
+    def emit(self, record):
+        pass
+
+logging.getLogger("teradata").addHandler(NullHandler())
 
 
 class OutParam ():
