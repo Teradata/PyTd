@@ -25,7 +25,6 @@
 
 import sys
 import ctypes
-import logging
 import threading
 import atexit
 import platform
@@ -48,14 +47,18 @@ SQL_CLOSE, SQL_UNBIND, SQL_RESET_PARAMS = 0, 2, 3
 SQL_PARAM_TYPE_UNKNOWN = 0
 SQL_PARAM_INPUT, SQL_PARAM_INPUT_OUTPUT, SQL_PARAM_OUTPUT = 1, 2, 4
 SQL_ATTR_PARAM_BIND_TYPE = 18
+SQL_ATTR_ROWS_FETCHED_PTR, SQL_ATTR_ROW_STATUS_PTR = 26, 25
+SQL_ATTR_ROW_ARRAY_SIZE = 27
 SQL_ATTR_PARAMS_PROCESSED_PTR, SQL_ATTR_PARAM_STATUS_PTR = 21, 20
 SQL_ATTR_PARAMSET_SIZE = 22
 SQL_PARAM_BIND_BY_COLUMN = 0
 SQL_NULL_DATA, SQL_NTS = -1, -3
 SQL_IS_POINTER, SQL_IS_UINTEGER, SQL_IS_INTEGER = -4, -5, -6
 
+SQL_SIGNED_OFFSET = -20
 SQL_C_BINARY, SQL_BINARY, SQL_VARBINARY, SQL_LONGVARBINARY = -2, -2, -3, -4
-SQL_C_WCHAR, SQL_WVARCHAR, SQL_WLONGVARCHAR = -8, -9, -10
+SQL_C_WCHAR, SQL_WCHAR, SQL_WVARCHAR, SQL_WLONGVARCHAR = -8, -8, -9, -10
+SQL_C_SBIGINT = -5 + SQL_SIGNED_OFFSET
 SQL_FLOAT = 6
 SQL_C_FLOAT = SQL_REAL = 7
 SQL_C_DOUBLE = SQL_DOUBLE = 8
@@ -109,7 +112,8 @@ if osType == "Darwin" or osType == "Windows":
         s if util.isString(s) else str(s))
 else:
     # Unix/Linux
-    _createBuffer = lambda l: ctypes.create_string_buffer(l)
+    # Multiply by 3 as one UTF-16 character can require 3 UTF-8 bytes.
+    _createBuffer = lambda l: ctypes.create_string_buffer(l * 3)
     _inputStr = lambda s, l = None: None if s is None else \
         ctypes.create_string_buffer((s if util.isString(s) else str(s)).encode(
             'utf8'), l)
@@ -256,6 +260,8 @@ def initFunctionPrototypes():
               SQLINTEGER, SQLPOINTER, SQLINTEGER)
     prototype(odbc.SQLEndTran, SQLSMALLINT, SQLHANDLE, SQLSMALLINT)
     prototype(odbc.SQLRowCount, SQLHANDLE, PTR(SQLLEN))
+    prototype(odbc.SQLBindCol, SQLHANDLE, SQLUSMALLINT, SQLSMALLINT,
+              SQLPOINTER, SQLLEN, PTR(SQLLEN))
 
 
 def initOdbcLibrary(odbcLibPath=None):
@@ -730,7 +736,7 @@ class OdbcCursor (util.Cursor):
                 typeName = _outputStr(nameBuf)
                 typeCode = self.converter.convertType(self.dbType, typeName)
                 self.columns[columnName.lower()] = col
-                self.types.append((typeName, typeCode))
+                self.types.append((typeName, typeCode, dataType.value))
                 self.description.append((
                     columnName, typeCode, None, columnSize.value,
                     decimalDigits.value, None, nullable.value))
@@ -832,65 +838,193 @@ def _getParamValue(val, valueType, batch):
     return param, length
 
 
-def rowIterator(cursor):
-    """ Generator function for iterating over the rows in a result set. """
-    buf = _createBuffer(LARGE_BUFFER_SIZE)
-    bufSize = ctypes.sizeof(buf)
+def _getFetchSize(cursor):
+    """Gets the fetch size associated with the cursor."""
+    fetchSize = cursor.fetchSize
+    for dataType in cursor.types:
+        if dataType[2] in (SQL_LONGVARBINARY, SQL_WLONGVARCHAR):
+            fetchSize = 1
+            break
+    return fetchSize
+
+
+def _getBufSize(cursor, colIndex):
+    bufSize = cursor.description[colIndex - 1][3] + 1
+    dataType = cursor.types[colIndex - 1][0]
+    if dataType in datatypes.BINARY_TYPES:
+        pass
+    elif dataType in datatypes.FLOAT_TYPES:
+        bufSize = ctypes.sizeof(ctypes.c_double)
+    elif dataType in datatypes.INT_TYPES:
+        bufSize = 30
+    elif cursor.types[colIndex - 1][2] in (SQL_WCHAR, SQL_WVARCHAR,
+                                           SQL_WLONGVARCHAR):
+        pass
+    elif dataType.startswith("DATE"):
+        bufSize = 20
+    elif dataType.startswith("TIMESTAMP"):
+        bufSize = 40
+    elif dataType.startswith("TIME"):
+        bufSize = 30
+    elif dataType.startswith("INTERVAL"):
+        bufSize = 80
+    elif dataType.startswith("PERIOD"):
+        bufSize = 80
+    elif dataType.startswith("DECIMAL"):
+        bufSize = 42
+    else:
+        bufSize = 2 ** 16 + 1
+    return bufSize
+
+
+def _setupColumnBuffers(cursor, buffers, bufSizes, dataTypes, indicators,
+                        lastFetchSize):
+    """Sets up the column buffers for retrieving multiple rows of a result set
+    at a time"""
+    fetchSize = _getFetchSize(cursor)
+    # If the fetchSize hasn't changed since the last time setupBuffers
+    # was called, then we can reuse the previous buffers.
+    if fetchSize != lastFetchSize:
+        logger.debug("FETCH_SIZE: %s" % fetchSize)
+        rc = odbc.SQLSetStmtAttr(
+            cursor.hStmt, SQL_ATTR_ROW_ARRAY_SIZE, fetchSize, 0)
+        checkStatus(rc, hStmt=cursor.hStmt,
+                    method="SQLSetStmtAttr - SQL_ATTR_ROW_ARRAY_SIZE")
+        for col in range(1, len(cursor.description) + 1):
+            dataType = SQL_C_WCHAR
+            buffer = None
+            bufSize = _getBufSize(cursor, col)
+            lob = False
+            if cursor.types[col - 1][2] == SQL_LONGVARBINARY:
+                lob = True
+                bufSize = LARGE_BUFFER_SIZE
+                buffer = (ctypes.c_byte * bufSize)()
+                dataType = SQL_LONGVARBINARY
+            elif cursor.types[col - 1][2] == SQL_WLONGVARCHAR:
+                lob = True
+                buffer = _createBuffer(LARGE_BUFFER_SIZE)
+                bufSize = ctypes.sizeof(buffer)
+                dataType = SQL_WLONGVARCHAR
+            elif cursor.description[col - 1][1] == BINARY:
+                dataType = SQL_C_BINARY
+                buffer = (ctypes.c_byte * bufSize * fetchSize)()
+            elif cursor.types[col - 1][0] in datatypes.FLOAT_TYPES:
+                dataType = SQL_C_DOUBLE
+                buffer = (ctypes.c_double * fetchSize)()
+            else:
+                buffer = _createBuffer(bufSize * fetchSize)
+                bufSize = int(ctypes.sizeof(buffer) / fetchSize)
+            dataTypes.append(dataType)
+            buffers.append(buffer)
+            bufSizes.append(bufSize)
+            logger.debug("Buffer size for column %s: %s", col, bufSize)
+            indicators.append((SQLLEN * fetchSize)())
+            if not lob:
+                rc = odbc.SQLBindCol(cursor.hStmt, col, dataType, buffer,
+                                     bufSize, indicators[col - 1])
+                checkStatus(rc, hStmt=cursor.hStmt, method="SQLBindCol")
+    return fetchSize
+
+
+def _getLobData(cursor, colIndex, buf):
+    """ Get LOB Data """
     length = SQLLEN()
+    dataType = SQL_C_WCHAR
+    bufSize = ctypes.sizeof(buf)
+    if cursor.description[colIndex - 1][1] == BINARY:
+        dataType = SQL_C_BINARY
+    rc = odbc.SQLGetData(
+        cursor.hStmt, colIndex, dataType, buf, bufSize, ADDR(length))
+    sqlState = checkStatus(rc, hStmt=cursor.hStmt, method="SQLGetData")
+    val = None
+    if length.value != SQL_NULL_DATA:
+        if SQL_STATE_DATA_TRUNCATED in sqlState:
+            logger.debug(
+                "Data truncated. Calling SQLGetData to get next part "
+                "of data for column %s of size %s.",
+                colIndex, length.value)
+            if dataType == SQL_C_BINARY:
+                val = bytearray(length.value)
+                val[0:bufSize] = buf
+                newBufSize = len(val) - bufSize
+                newBuffer = (ctypes.c_byte * newBufSize).from_buffer(
+                    val, bufSize)
+                rc = odbc.SQLGetData(
+                    cursor.hStmt, colIndex, dataType, newBuffer,
+                    newBufSize, ADDR(length))
+                checkStatus(
+                    rc, hStmt=cursor.hStmt, method="SQLGetData2")
+            else:
+                val = [_outputStr(buf), ]
+                while SQL_STATE_DATA_TRUNCATED in sqlState:
+                    rc = odbc.SQLGetData(
+                        cursor.hStmt, colIndex, dataType, buf, bufSize,
+                        ADDR(length))
+                    sqlState = checkStatus(
+                        rc, hStmt=cursor.hStmt, method="SQLGetData2")
+                    val.append(_outputStr(buf))
+                val = "".join(val)
+        else:
+            if dataType == SQL_C_BINARY:
+                val = bytearray(
+                    (ctypes.c_byte * length.value).from_buffer(buf))
+            else:
+                val = _outputStr(buf)
+    return val
+
+
+def _getRow(cursor, buffers, bufSizes, dataTypes, indicators, rowIndex):
+    """Reads a row of data from the fetched input buffers.  If the column
+       type is a BLOB or CLOB, then that data is obtained via calls to
+       SQLGetData."""
+    row = []
+    for col in range(1, len(cursor.description) + 1):
+        val = None
+        buf = buffers[col - 1]
+        bufSize = bufSizes[col - 1]
+        dataType = dataTypes[col - 1]
+        length = indicators[col - 1][rowIndex]
+        if length != SQL_NULL_DATA:
+            if dataType == SQL_C_BINARY:
+                val = bytearray((ctypes.c_byte * length).from_buffer(
+                    buf, bufSize * rowIndex))
+            elif dataType == SQL_C_DOUBLE:
+                val = ctypes.c_double.from_buffer(buf,
+                                                  bufSize * rowIndex).value
+            elif dataType == SQL_WLONGVARCHAR:
+                val = _getLobData(cursor, col, buf)
+            elif dataType == SQL_LONGVARBINARY:
+                val = _getLobData(cursor, col, buf)
+            else:
+                chLen = (int)(bufSize / ctypes.sizeof(SQLWCHAR))
+                chBuf = (SQLWCHAR * chLen)
+                val = _outputStr(chBuf.from_buffer(buf,
+                                                   bufSize * rowIndex))
+        row.append(val)
+    return row
+
+
+def rowIterator(cursor):
+    buffers = []
+    bufSizes = []
+    dataTypes = []
+    indicators = []
+    rowCount = SQLULEN()
+    lastFetchSize = None
+    rc = odbc.SQLSetStmtAttr(
+        cursor.hStmt, SQL_ATTR_ROWS_FETCHED_PTR, ADDR(rowCount), 0)
+    checkStatus(rc, hStmt=cursor.hStmt,
+                method="SQLSetStmtAttr - SQL_ATTR_ROWS_FETCHED_PTR")
     while cursor.description is not None:
+        lastFetchSize = _setupColumnBuffers(cursor, buffers, bufSizes,
+                                            dataTypes, indicators,
+                                            lastFetchSize)
         rc = odbc.SQLFetch(cursor.hStmt)
         checkStatus(rc, hStmt=cursor.hStmt, method="SQLFetch")
         if rc == SQL_NO_DATA:
             break
-        values = []
-        # Get each column in the row.
-        for col in range(1, len(cursor.description) + 1):
-            val = None
-            dataType = SQL_C_WCHAR
-            if cursor.description[col - 1][1] == BINARY:
-                dataType = SQL_C_BINARY
-            elif cursor.types[col - 1][0] in datatypes.FLOAT_TYPES:
-                dataType = SQL_C_DOUBLE
-            rc = odbc.SQLGetData(
-                cursor.hStmt, col, dataType, buf, bufSize, ADDR(length))
-            sqlState = checkStatus(rc, hStmt=cursor.hStmt, method="SQLGetData")
-            if length.value != SQL_NULL_DATA:
-                if SQL_STATE_DATA_TRUNCATED in sqlState:
-                    logger.debug(
-                        "Data truncated. Calling SQLGetData to get next part "
-                        "of data for column %s of size %s.",
-                        col, length.value)
-                    if dataType == SQL_C_BINARY:
-                        val = bytearray(length.value)
-                        val[0:bufSize] = (
-                            ctypes.c_ubyte * bufSize).from_buffer(buf)
-                        newBufSize = len(val) - bufSize
-                        newBuffer = (ctypes.c_ubyte * newBufSize).from_buffer(
-                            val, bufSize)
-                        rc = odbc.SQLGetData(
-                            cursor.hStmt, col, dataType, newBuffer,
-                            newBufSize, ADDR(length))
-                        checkStatus(
-                            rc, hStmt=cursor.hStmt, method="SQLGetData2")
-                    else:
-                        val = [_outputStr(buf), ]
-                        while SQL_STATE_DATA_TRUNCATED in sqlState:
-                            rc = odbc.SQLGetData(
-                                cursor.hStmt, col, dataType, buf, bufSize,
-                                ADDR(length))
-                            sqlState = checkStatus(
-                                rc, hStmt=cursor.hStmt, method="SQLGetData2")
-                            val.append(_outputStr(buf))
-                        val = "".join(val)
-                else:
-                    if dataType == SQL_C_BINARY:
-                        val = bytearray(
-                            (ctypes.c_ubyte * length.value).from_buffer(buf))
-                    elif dataType == SQL_C_DOUBLE:
-                        val = ctypes.c_double.from_buffer(buf).value
-                    else:
-                        val = _outputStr(buf)
-            values.append(val)
-        yield values
+        for rowIndex in range(0, rowCount.value):
+            yield _getRow(cursor, buffers, bufSizes, dataTypes,
+                          indicators, rowIndex)
     if not cursor._checkForMoreResults():
         cursor._free()

@@ -19,16 +19,17 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-import unittest
-import sys
-import logging
-import os
-import decimal
 import datetime
-import teradata
+import decimal
 import json
+import logging
 import math
+import os
+import sys
+import unittest
+
 from teradata import util, datatypes
+import teradata
 
 
 class UdaExecDataTypesTest ():
@@ -39,6 +40,42 @@ class UdaExecDataTypesTest ():
     def setUpClass(cls):
         cls.username = cls.password = util.setupTestUser(udaExec, cls.dsn)
         cls.failure = False
+
+    def testCharacterLimits(self):
+        # REST-310 - REST does not support CLOB inserts more than 64k
+        # characters.
+        if self.dsn == "ODBC":
+            with udaExec.connect(self.dsn, username=self.username,
+                                 password=self.password) as conn:
+                self.assertIsNotNone(conn)
+                cursor = conn.execute(
+                    """CREATE TABLE testCharacterLimits (id INTEGER,
+                        a CHAR CHARACTER SET UNICODE,
+                        b CHAR(4) CHARACTER SET UNICODE,
+                        c VARCHAR(100) CHARACTER SET UNICODE,
+                        d VARCHAR(16000) CHARACTER SET UNICODE,
+                        e CLOB (2000000) CHARACTER SET UNICODE)""")
+                cursor.arraysize = 10
+                params = [
+                    (101, u"\u3456", u"\u3456" * 4, u"\u3456" * 100,
+                     u"\u3456" * 10666, u"\u3456" * 2000000),
+                    (102, None, None, None, None, None)]
+                for p in params:
+                    conn.execute(
+                        "INSERT INTO testCharacterLimits "
+                        "VALUES (?, ?, ?, ?, ?, ?)", p)
+                cursor = conn.execute("SELECT * FROM testCharacterLimits")
+                for desc in cursor.description:
+                    print(desc)
+                for desc in cursor.types:
+                    print(desc)
+                rowIndex = 0
+                for row in cursor:
+                    colIndex = 0
+                    for col in row:
+                        self.assertEqual(col, params[rowIndex][colIndex])
+                        colIndex += 1
+                    rowIndex += 1
 
     def testStringDataTypes(self):
         with udaExec.connect(self.dsn, username=self.username,
@@ -91,6 +128,40 @@ class UdaExecDataTypesTest ():
                 for row in conn.execute("SELECT * FROM testStringDataTypes "
                                         "WHERE id > 101"):
                     self.assertEqual(row.c, str(row.id % 10) * 64000)
+
+    def testBinaryLimits(self):
+        # REST Does not support binary data types at this time.
+        if self.dsn == "ODBC":
+            with udaExec.connect(self.dsn, username=self.username,
+                                 password=self.password) as conn:
+                self.assertIsNotNone(conn)
+                cursor = conn.execute(
+                    """CREATE TABLE testBinaryLimits (id INTEGER,
+                        a BYTE,
+                        c VARBYTE(10000),
+                        e BLOB (2000000))""")
+                cursor.arraysize = 10
+                params = [
+                    (101, bytearray(os.urandom(1)),
+                        bytearray(os.urandom(10000)),
+                        bytearray(os.urandom(2000000))),
+                    (102, None, None, None)]
+                for p in params:
+                    conn.execute(
+                        "INSERT INTO testBinaryLimits "
+                        "VALUES (?, ?, ?, ?)", p)
+                cursor = conn.execute("SELECT * FROM testBinaryLimits")
+                for desc in cursor.description:
+                    print(desc)
+                for desc in cursor.types:
+                    print(desc)
+                rowIndex = 0
+                for row in cursor:
+                    colIndex = 0
+                    for col in row:
+                        self.assertEqual(col, params[rowIndex][colIndex])
+                        colIndex += 1
+                    rowIndex += 1
 
     def testBinaryDataTypes(self):
         # REST Does not support binary data types at this time.
@@ -188,6 +259,46 @@ class UdaExecDataTypesTest ():
                     self.assertEqual(
                         row.d, bytearray([0xDD, 0xCC, 0xBB, 0xAA]))
 
+    def testNumberLimits(self):
+        with udaExec.connect(
+            self.dsn, username=self.username,
+            password=self.password,
+            dataTypeConverter=datatypes.DefaultDataTypeConverter(
+                useFloat=True)) as conn:
+            self.assertIsNotNone(conn)
+            cursor = conn.execute("""CREATE TABLE testNumericLimits (
+                id INTEGER,
+                a BYTEINT,
+                b SMALLINT,
+                c INTEGER,
+                d BIGINT,
+                e FLOAT,
+                f DECIMAL(38, 38))""")
+            cursor.arraysize = 20
+            params = []
+            params.append((1, 2 ** 7 - 1, 2 ** 15 - 1, 2 ** 31 - 1,
+                           2 ** 63 - 1, (float(2 ** 63 - 1)),
+                           decimal.Decimal("-." + "1" * 37)))
+            params.append((2, -2 ** 7, -2 ** 15, -2 ** 31, -2 ** 63,
+                           float(-2 ** 63), decimal.Decimal("." + "1" * 37)))
+            print(params)
+            conn.executemany(
+                "INSERT INTO testNumericLimits (?, ?, ?, ?, ?, ?, ?)",
+                params)
+            cursor = conn.execute(
+                "SELECT * FROM testNumericLimits ORDER BY id")
+            py2 = sys.version_info[0] == 2
+            rowIndex = 0
+            for r in cursor:
+                colIndex = 0
+                for col in r:
+                    # Precious is lost with floats and REST.
+                    if colIndex != 5 or self.dsn == 'ODBC' or not py2:
+                        self.assertEqual(
+                            col, params[rowIndex][colIndex])
+                    colIndex += 1
+                rowIndex += 1
+
     def testNumericDataTypes(self):
         with udaExec.connect(self.dsn, username=self.username,
                              password=self.password) as conn:
@@ -209,7 +320,7 @@ class UdaExecDataTypesTest ():
                 "?, ?, ?)",
                 params=[(i, decimal.Decimal(i), i, decimal.Decimal(i), i,
                          decimal.Decimal(i), i, i, i, i, decimal.Decimal(i))
-                        for i in range(0, 128)],
+                        for i in range(-128, 128)],
                 batch=True)
             conn.execute(
                 "INSERT INTO testNumericDataTypes VALUES (128, 99, 999, "
@@ -834,5 +945,5 @@ def runTest(testName):
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testFloatTypes')
+    # runTest('testNumberLimits')
     unittest.main()

@@ -470,8 +470,8 @@ class UdaExecCheckpointManagerFileImpl (UdaExecCheckpointManager):
 
     """ Implementation of the UdaExecCheckpointMananer using a local file."""
 
-    def __init__(self, file):
-        self.file = file
+    def __init__(self, f):
+        self.file = f
 
     def loadCheckpoint(self):
         resumeFromCheckpoint = None
@@ -678,7 +678,13 @@ class UdaExecCursor:
         self.skip = False
         self.description = None
         self.types = None
+        self.arraysize = 1
         self.rowcount = -1
+
+    def __setattr__(self, name, value):
+        self.__dict__[name] = value
+        if name == "arraysize":
+            self.cursor.arraysize = value
 
     def callproc(self, procname, params, runAlways=False,
                  continueOnError=False, ignoreErrors=[], **kwargs):
@@ -801,6 +807,8 @@ class UdaExecCursor:
         return self.cursor.fetchone()
 
     def fetchmany(self, size=None):
+        if size is None:
+            size = self.arraysize
         if self.skip:
             return []
         return self.cursor.fetchmany(size)

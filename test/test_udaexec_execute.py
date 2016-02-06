@@ -26,6 +26,8 @@ import os
 import decimal
 import teradata
 import threading
+import random
+import time
 from teradata import util
 
 logger = logging.getLogger(__name__)
@@ -504,6 +506,68 @@ class UdaExecExecuteTest ():
                     print(row)
                 self.assertEqual(count, 0)
 
+    def testFetchArraySize1000(self):
+        rows = 5000
+        randomset = []
+        for j in range(rows):
+            rowset = [j, ]
+            rowset.append(int(random.random() * 100000))
+            rowset.append(int(random.random() * 100000))
+            rowset.append(int(random.random() * 100000))
+            rowset.append(str(random.random() * 100000))
+            rowset.append(str(random.random() * 100000))
+            rowset.append(str(random.random() * 100000))
+            randomset.append(rowset)
+
+        createtablestatement = """
+        CREATE MULTISET TABLE testFetchArraySize1000
+            (
+               id INTEGER,
+               randint1 INTEGER,
+               randint2 INTEGER,
+               randint3 INTEGER,
+               randchar1 VARCHAR(20),
+               randchar2 VARCHAR(20),
+               randchar3 VARCHAR(20)
+            )
+         NO PRIMARY INDEX;
+         """
+        with udaExec.connect(self.dsn,  username=self.username,
+                             password=self.password) as session:
+            cursor = session.execute(createtablestatement)
+            cursor.arraysize = 1000
+            index = 0
+            while index < 20:
+                session.executemany("""INSERT INTO testFetchArraySize1000
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                                    randomset,
+                                    batch=True)
+                for y in randomset:
+                    y[0] = y[0] + len(randomset)
+                index += 1
+            fetchRows(self, 100, randomset, session)
+            fetchRows(self, 1000, randomset, session)
+            fetchRows(self, 10000, randomset, session)
+            fetchRows(self, 100000, randomset, session)
+
+
+def fetchRows(test, count, randomset, session):
+    result = session.execute(
+        """select * from testFetchArraySize1000 WHERE id < %s
+        ORDER BY id""" % count)
+    t0 = time.time()
+    rowIndex = 0
+    for r in result:
+        colIndex = 0
+        for col in r:
+            if colIndex != 0:
+                test.assertEqual(
+                    col, randomset[rowIndex % len(randomset)][colIndex])
+            colIndex += 1
+        rowIndex += 1
+    print("fetch over sample %s records: %s seconds " %
+          (count, time.time() - t0))
+
 
 def connectAndExecuteSelect(testCase, threadId):
     try:
@@ -527,7 +591,7 @@ def cursorAndExecuteSelect(testCase, session, threadId):
 # The unit tests in the UdaExecExecuteTest are execute once for each named
 # data source below.
 util.createTestCasePerDSN(
-    UdaExecExecuteTest, unittest.TestCase, ("HTTP", "HTTPS", "ODBC"))
+    UdaExecExecuteTest, unittest.TestCase,  ("HTTP", "HTTPS", "ODBC"))
 
 if __name__ == '__main__':
     formatter = logging.Formatter(
@@ -551,5 +615,5 @@ def runTest(testName):
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testDefaultDatabase')
+    # runTest('testFetchArraySize1000')
     unittest.main()

@@ -23,7 +23,6 @@
 # SOFTWARE.
 
 import sys
-import logging
 import re
 import codecs
 import argparse
@@ -94,7 +93,8 @@ class Cursor:
         self.converter = dataTypeConverter
         self.dbType = dbType
         self.results = None
-        self.arraysize = 500
+        self.arraysize = 1
+        self.fetchSize = None
         self.rowcount = -1
         self.description = None
         self.types = None
@@ -117,11 +117,13 @@ class Cursor:
         raise NotImplementedError("Subclass must implement abstract method")
 
     def fetchone(self):
+        self.fetchSize = 1
         return next(self, None)
 
     def fetchmany(self, size=None):
         if size is None:
             size = self.arraysize
+        self.fetchSize = size
         rows = []
         count = 0
         for row in self:
@@ -132,6 +134,7 @@ class Cursor:
         return rows
 
     def fetchall(self):
+        self.fetchSize = self.arraysize
         rows = []
         for row in self:
             rows.append(row)
@@ -151,6 +154,7 @@ class Cursor:
         return self
 
     def __next__(self):
+        self.fetchSize = self.arraysize
         if self.iterator:
             if self.rownumber is None:
                 self.rownumber = 0

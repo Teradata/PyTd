@@ -23,7 +23,6 @@
 # SOFTWARE.
 
 import re
-import logging
 import json
 from . import util
 from .api import *  # @UnusedWildImport # noqa
@@ -52,10 +51,11 @@ NUMBER_TYPES = ("BYTEINT", "BIGINT", "DECIMAL", "DOUBLE", "DOUBLE PRECISION",
                 "INTEGER", "NUMBER", "SMALLINT", "FLOAT", "INT", "NUMERIC",
                 "REAL")
 
+INT_TYPES = ("BYTEINT", "BIGINT", "INTEGER", "SMALLINT", "INT")
+
 FLOAT_TYPES = ("FLOAT", "DOUBLE", "DOUBLE PRECISION", "REAL")
 
-BINARY_TYPES = (
-    "BLOB", "BYTE", "GRAPHIC", "LONG VARGRAPHIC", "VARBYTE", "VARGRAPHIC")
+BINARY_TYPES = ("BLOB", "BYTE", "VARBYTE")
 
 
 def _getMs(m, num):
