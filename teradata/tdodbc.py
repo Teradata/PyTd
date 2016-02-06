@@ -102,7 +102,7 @@ QUERY_TIMEOUT = 120
 if pyVer > 2:
     unicode = str  # @ReservedAssignment
 
-if osType == "Darwin" or osType == "Windows":
+if osType == "Darwin" or osType == "Windows" or osType.startswith('CYGWIN'):
     # Mac OSx and Windows
     _createBuffer = lambda l: ctypes.create_unicode_buffer(l)
     _inputStr = lambda s, l = None: None if s is None else \
@@ -275,6 +275,8 @@ def initOdbcLibrary(odbcLibPath=None):
                 # If MAC OSx
                 if osType == "Darwin":
                     odbcLibPath = "libiodbc.dylib"
+                elif osType.startswith("CYGWIN"):
+                    odbcLibPath = "odbc32.dll"
                 else:
                     odbcLibPath = 'libodbc.so'
             logger.info("Loading ODBC Library: %s", odbcLibPath)
