@@ -84,6 +84,7 @@ SQLHANDLE = ctypes.c_void_p
 
 ADDR = ctypes.byref
 PTR = ctypes.POINTER
+ERROR_BUFFER_SIZE = 2 ** 10
 SMALL_BUFFER_SIZE = 2 ** 12
 LARGE_BUFFER_SIZE = 2 ** 20
 TRUE = 1
@@ -142,7 +143,7 @@ def getDiagnosticInfo(handle, handleType=SQL_HANDLE_STMT):
     infoNumber = 1
     sqlState = _createBuffer(6)
     nativeError = SQLINTEGER()
-    messageBuffer = _createBuffer(SMALL_BUFFER_SIZE)
+    messageBuffer = _createBuffer(ERROR_BUFFER_SIZE)
     messageLength = SQLSMALLINT()
     while True:
         rc = odbc.SQLGetDiagRecW(handleType, handle, infoNumber, sqlState,
