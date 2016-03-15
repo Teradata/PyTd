@@ -775,6 +775,7 @@ class UdaExecCursor:
                 self.description = self.cursor.description
                 self.types = self.cursor.types
                 self.rowcount = self.cursor.rowcount
+                self.columns = self.cursor.columns
                 duration = time.time() - start
                 rowsStr = " " if self.cursor.rowcount < 0 else \
                     " Rows: %s, " % self.cursor.rowcount
