@@ -141,11 +141,11 @@ def getDiagnosticInfo(handle, handleType=SQL_HANDLE_STMT):
      when errors occur."""
     info = []
     infoNumber = 1
-    sqlState = _createBuffer(6)
-    nativeError = SQLINTEGER()
-    messageBuffer = _createBuffer(ERROR_BUFFER_SIZE)
-    messageLength = SQLSMALLINT()
     while True:
+        sqlState = _createBuffer(6)
+        nativeError = SQLINTEGER()
+        messageBuffer = _createBuffer(ERROR_BUFFER_SIZE)
+        messageLength = SQLSMALLINT()
         rc = odbc.SQLGetDiagRecW(handleType, handle, infoNumber, sqlState,
                                  ADDR(nativeError), messageBuffer,
                                  len(messageBuffer), ADDR(messageLength))
@@ -166,6 +166,8 @@ def getDiagnosticInfo(handle, handleType=SQL_HANDLE_STMT):
                 'SQL_INVALID_HANDLE',
                 "Invalid handle passed to SQLGetDiagRecW.")
         elif rc == SQL_ERROR:
+            if infoNumber > 1:
+                return info
             raise InterfaceError(
                 "SQL_ERROR", "SQL_ERROR returned from SQLGetDiagRecW.")
         else:
@@ -196,7 +198,12 @@ def checkStatus(rc, hEnv=SQL_NULL_HANDLE, hDbc=SQL_NULL_HANDLE,
             elif not ignore or i[0] not in ignore:
                 logger.debug((u"{} returned non-successful error code "
                               u"{}: [{}] {}").format(method, rc, i[0], i[1]))
-                raise DatabaseError(i[2], u"[{}] {}".format(i[0], i[1]), i[0])
+                msg = ", ".join(map(lambda m: m[1], info))
+                if re.search(r'[^0-9\s]', msg) is None:
+                    msg = msg + (". Check that the ODBC driver is installed "
+                                 "and the ODBCINI environment variable is"
+                                 "correctly set.")
+                raise DatabaseError(i[2], u"[{}] {}".format(i[0], msg), i[0])
             else:
                 logger.debug(
                     u"Ignoring return of {} from {}:  [{}] {}".format(rc,
@@ -330,7 +337,6 @@ class OdbcConnection:
         self.cursors = []
         self.dbType = dbType
         self.converter = dataTypeConverter
-        connections.append(self)
 
         # Build connect string
         extraParams = set(k.lower() for k in kwargs)
@@ -364,7 +370,13 @@ class OdbcConnection:
                                         SQL_NTS, None, 0, None, 0)
         finally:
             lock.release()
-        checkStatus(rc, hDbc=self.hDbc, method="SQLDriverConnectW")
+        try:
+            checkStatus(rc, hDbc=self.hDbc, method="SQLDriverConnectW")
+        except:
+            rc = odbc.SQLFreeHandle(SQL_HANDLE_DBC, self.hDbc)
+            self.hDbc = None
+            raise
+        connections.append(self)
 
         # Setup autocommit, query bands, etc.
         try:
@@ -636,9 +648,11 @@ class OdbcCursor (util.Cursor):
         lengthArrays = []
         paramSetSize = len(params)
         paramSetNum = 0
+        debugEnabled = logger.isEnabledFor(logging.DEBUG)
         for p in params:
             paramSetNum += 1
-            logger.debug("ParamSet %s: %s", paramSetNum, p)
+            if debugEnabled:
+                logger.debug("ParamSet %s: %s", paramSetNum, p)
             if len(p) != numParams:
                 raise InterfaceError(
                     "PARAMS_MISMATCH", "The number of supplied parameters "
@@ -654,8 +668,9 @@ class OdbcCursor (util.Cursor):
                 if length > maxLen:
                     maxLen = length
                 p.append(param)
-            logger.debug(
-                "Max length for parameter %s is %s.", paramNum + 1, maxLen)
+            if debugEnabled:
+                logger.debug("Max length for parameter %s is %s.",
+                             paramNum + 1, maxLen)
             if valueType == SQL_C_BINARY:
                 valueSize = SQLLEN(maxLen)
                 paramArrays.append((SQLBYTE * (paramSetSize * maxLen))())
@@ -688,7 +703,8 @@ class OdbcCursor (util.Cursor):
                     lengthArrays[paramNum][paramSetNum] = SQLLEN(SQL_NULL_DATA)
                     if valueType == SQL_C_WCHAR:
                         paramArrays[paramNum][index] = _convertParam("\x00")[0]
-            logger.trace("Binding parameter %s...", paramNum + 1)
+            if debugEnabled:
+                logger.debug("Binding parameter %s...", paramNum + 1)
             rc = odbc.SQLBindParameter(self.hStmt, paramNum + 1,
                                        SQL_PARAM_INPUT, valueType, paramType,
                                        SQLULEN(maxLen), 0,
@@ -696,7 +712,8 @@ class OdbcCursor (util.Cursor):
                                        lengthArrays[paramNum])
             checkStatus(rc, hStmt=self.hStmt, method="SQLBindParameter")
         # Execute the SQL statement.
-        logger.debug("Executing prepared statement.")
+        if debugEnabled:
+            logger.debug("Executing prepared statement.")
         rc = odbc.SQLExecute(self.hStmt)
         checkStatus(rc, hStmt=self.hStmt, method="SQLExecute")
 
