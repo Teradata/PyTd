@@ -67,6 +67,7 @@ class RestConnection:
                  webContext='/tdrest', autoCommit=False, implicit=False,
                  transactionMode='TERA', queryBands=None, charset=None,
                  verifyCerts=True, sslContext=None, database=None,
+                 authentication=None,
                  dataTypeConverter=datatypes.DefaultDataTypeConverter()):
         self.dbType = dbType
         self.system = system
@@ -88,6 +89,11 @@ class RestConnection:
             else:
                 raise InterfaceError(
                     CONFIG_ERROR, "Unsupported protocol: {}".format(protocol))
+        if host is None:
+            raise InterfaceError(0,
+                                 "\"host\" is a required field, "
+                                 "set to location of "
+                                 "TDREST server.")
         self.template = RestTemplate(
             protocol, host, port, webContext, username, password,
             accept='application/vnd.com.teradata.rest-v1.0+json',
@@ -103,6 +109,8 @@ class RestConnection:
                     options['charSet'] = charset
                 if database:
                     options['defaultDatabase'] = database
+                if authentication:
+                    options['logMech'] = authentication
                 try:
                     session = conn.post(
                         '/systems/{0}/sessions'.format(self.system),
