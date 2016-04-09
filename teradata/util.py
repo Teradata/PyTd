@@ -427,7 +427,8 @@ def bteqsplit(lines):
             elif line.startswith("*"):
                 continue
             elif line.startswith("/*"):
-                inComment = True
+                if not line.endswith("*/"):
+                    inComment = True
                 continue
             else:
                 inStatement = True

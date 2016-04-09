@@ -10,6 +10,8 @@
 SELECT DATE,TIME;
 .SET WIDTH 132;
 
+/* This is a mult-line comment that starts and ends on the same line */ 
+
 CREATE TABLE Sou_EMP_Tab
 ( EMP_ID   Integer,
 EMP_Name Char(10)
