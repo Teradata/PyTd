@@ -70,17 +70,26 @@ class UdaExec:
 
     """Helper class for scripting with Teradata systems"""
 
-    def __init__(self, appName="${appName}", version="${version}",
+    def __init__(self, appName="${appName}",
+                 version="${version}",
                  checkpointFile="${checkpointFile}",
-                 runNumberFile="${runNumberFile}", runNumber=None,
-                 configureLogging="${configureLogging}", logDir="${logDir}",
-                 logFile="${logFile}", logConsole="${logConsole}",
-                 logLevel="${logLevel}", logRetention="${logRetention}",
+                 runNumberFile="${runNumberFile}",
+                 runNumber=None,
+                 configureLogging="${configureLogging}",
+                 logDir="${logDir}",
+                 logFile="${logFile}",
+                 logConsole="${logConsole}",
+                 logLevel="${logLevel}",
+                 logRetention="${logRetention}",
                  systemConfigFile="/etc/udaexec.ini",
-                 userConfigFile="~/udaexec.ini", appConfigFile="udaexec.ini",
-                 configFiles=None, configSection="CONFIG",
-                 configEncoding="utf8", parseCmdLineArgs=True,
-                 gitPath="${gitPath}", production="${production}",
+                 userConfigFile="~/udaexec.ini",
+                 appConfigFile="udaexec.ini",
+                 configFiles=None,
+                 configSection="CONFIG",
+                 configEncoding="utf8",
+                 parseCmdLineArgs=True,
+                 gitPath="${gitPath}",
+                 production="${production}",
                  odbcLibPath="${odbcLibPath}",
                  dataTypeConverter=datatypes.DefaultDataTypeConverter()):
         """ Initializes the UdaExec framework """
@@ -245,12 +254,11 @@ class UdaExec:
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         fh = logging.FileHandler(self.logFile, mode="a", encoding="utf8")
         fh.setFormatter(formatter)
-        fh.setLevel(level)
         sh = logging.StreamHandler(sys.stdout)
         sh.setFormatter(formatter)
-        sh.setLevel(level)
         root = logging.getLogger()
-        root.setLevel(level)
+        if level != logging.NOTSET:
+            root.setLevel(level)
         root.addHandler(fh)
         if logConsole:
             root.addHandler(sh)
