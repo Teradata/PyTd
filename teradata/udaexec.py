@@ -559,7 +559,8 @@ class UdaExecConfig:
             sections = [self.configSection]
         for key, value in d.items():
             if util.isString(value):
-                d[key] = self._resolve(value, sections, None, None)
+                if str(key) == "username":
+                    d[key] = self._resolve(value, sections, None, None)
         return d
 
     def resolve(self, value, sections=None, default=None, errorMsg=None):
