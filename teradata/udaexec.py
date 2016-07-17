@@ -24,22 +24,24 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import sys
-import string
-import os.path
-import logging
-import time
 import atexit
-import datetime
-import platform
-import getpass
-import subprocess
-import collections
 import codecs
-from .util import toUnicode
+import collections
+import datetime
+import getpass
+import logging
+import os.path
+import platform
+import string
+import subprocess
+import sys
+import time
+
 from . import tdodbc, util, api, datatypes
 from . import tdrest  # @UnresolvedImport
+from .util import toUnicode
 from .version import __version__  # @UnresolvedImport
+
 
 # The module logger
 logger = logging.getLogger(__name__)
@@ -587,7 +589,7 @@ class UdaExecConfig:
                     value = value.replace("$$", "$")
                 error = None
                 break
-            except KeyError as e:
+            except (ValueError, KeyError) as e:
                 error = e
         if error is not None:
             if default is not None:
@@ -596,8 +598,10 @@ class UdaExecConfig:
                 raise api.InterfaceError(api.CONFIG_ERROR, errorMsg)
             else:
                 raise api.InterfaceError(
-                    api.CONFIG_ERROR, "Unable to resolve variable \"{}\".  "
-                    "Not found: {}".format(value, error))
+                    api.CONFIG_ERROR, "Unable to resolve \"{}\".  "
+                    "Parameter not found: {}.  "
+                    "If parameter substitution is not intended, "
+                    "escape '$' by adding another '$'.".format(value, error))
         return value
 
     def section(self, section):

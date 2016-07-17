@@ -325,6 +325,30 @@ class UdaExecExecuteTest ():
                         (teradata.InOutParam(i, "p1", dataType="INTEGER"), ))
                     self.assertEqual(result["p1"], i * i)
 
+    def testProcedureWithLargeLobInput(self):
+        # REST-307 - Unable to create Stored Procedure using REST, always use
+        # ODBC.
+        with udaExec.connect("ODBC", username=self.username,
+                             password=self.password) as conn:
+            self.assertIsNotNone(conn)
+            scriptFile = os.path.join(
+                os.path.dirname(__file__), "testClobSp.sql")
+            conn.execute(file=scriptFile, delimiter=";;")
+
+            SQLText = "CDR_2011-07-25_090000.000000.txt\n"
+            SQLText = SQLText * 5000
+            print("LENGTH OF SQLTest: {}".format(len(SQLText)))
+
+            conn.callproc('GCFR_BB_ExecutionLog_Set',
+                          ('TestProc', 127, 12, 96, 2, 2, 'MyText',
+                           'Test.py', 0, 0, SQLText))
+
+            count = 0
+            for row in conn.execute("SELECT * FROM GCFR_Execution_Log"):
+                self.assertEqual(row.Sql_Text, SQLText)
+                count = count + 1
+            self.assertEqual(count, 1)
+
     def testProcedureWithBinaryAndFloatParameters(self):
         if self.dsn == "ODBC":
             with udaExec.connect(self.dsn, username=self.username,
@@ -351,6 +375,27 @@ class UdaExecExecuteTest ():
                 self.assertEqual(result.p2, result.p1)
                 self.assertEqual(result.p3, float('inf'))
                 self.assertEqual(result.p4, result.p3)
+
+    def testProcedureWithResultSet(self):
+        if self.dsn == "ODBC":
+            with udaExec.connect(self.dsn, username=self.username,
+                                 password=self.password) as conn:
+                self.assertIsNotNone(conn)
+                for r in conn.execute(
+                    """REPLACE PROCEDURE testProcedureWithResultSet()
+DYNAMIC RESULT SETS 1
+BEGIN
+    DECLARE QUERY1 VARCHAR(22000);
+    DECLARE dyna_set1 CURSOR WITH RETURN TO CALLER FOR STMT1;
+    SET QUERY1 = 'select * from dbc.dbcinfo';
+     PREPARE STMT1 FROM QUERY1;
+     OPEN dyna_set1;
+     DEALLOCATE PREPARE STMT1;
+END;"""):
+                    logger.info(r)
+                with conn.cursor() as cursor:
+                    cursor.callproc("testProcedureWithResultSet", ())
+                    self.assertEqual(len(cursor.fetchall()), 3)
 
     def testQueryTimeout(self):
         with self.assertRaises(teradata.DatabaseError) as cm:
@@ -550,6 +595,16 @@ class UdaExecExecuteTest ():
             fetchRows(self, 10000, randomset, session)
             fetchRows(self, 100000, randomset, session)
 
+    def testDollarSignInPassword(self):
+        with udaExec.connect(self.dsn) as session:
+            session.execute("DROP USER testDollarSignInPassword",
+                            ignoreErrors=[3802])
+        util.setupTestUser(udaExec, self.dsn, user='testDollarSignInPassword',
+                           passwd='pa$$$$word')
+        with udaExec.connect(self.dsn, username='testDollarSignInPassword',
+                             password='pa$$$$word') as session:
+            session.execute("SELECT * FROM DBC.DBCINFO")
+
 
 def fetchRows(test, count, randomset, session):
     result = session.execute(
@@ -611,9 +666,9 @@ udaExec.checkpoint()
 def runTest(testName):
     suite = unittest.TestSuite()
     suite.addTest(UdaExecExecuteTest_ODBC(testName))  # @UndefinedVariable # noqa
-    suite.addTest(UdaExecExecuteTest_HTTPS(testName))  # @UndefinedVariable # noqa
+    # suite.addTest(UdaExecExecuteTest_HTTPS(testName))  # @UndefinedVariable # noqa
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testFetchArraySize1000')
+    # runTest('testDollarSignInPassword')
     unittest.main()

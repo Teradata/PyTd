@@ -456,11 +456,13 @@ def createTestCasePerDSN(testCase, baseCls, dataSourceNames):
                 newTestCase.__name__, newTestCase)
 
 
-def setupTestUser(udaExec, dsn, user=None, perm=100000000):
+def setupTestUser(udaExec, dsn, user=None, passwd=None, perm=100000000):
     """A utility method for creating a test user to be use by unittests."""
     if user is None:
         user = "py%s_%std_%s_test" % (
             sys.version_info[0], sys.version_info[1], getpass.getuser())
+    if passwd is None:
+        passwd = user
     with udaExec.connect(dsn) as conn:
         try:
             conn.execute("DELETE DATABASE " + user)
@@ -469,7 +471,7 @@ def setupTestUser(udaExec, dsn, user=None, perm=100000000):
             if e.code == 3802:
                 conn.execute(
                     "CREATE USER " + user +
-                    " FROM DBC AS PERM = %s, PASSWORD = %s" % (perm, user))
+                    " FROM DBC AS PERM = %s, PASSWORD = %s" % (perm, passwd))
                 conn.execute("GRANT UDTTYPE ON SYSUDTLIB to %s" % user)
                 conn.execute(
                     "GRANT CREATE PROCEDURE ON %s to %s" % (user, user))
