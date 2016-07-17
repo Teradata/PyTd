@@ -692,6 +692,7 @@ class UdaExecCursor:
         self.types = None
         self.arraysize = 1
         self.rowcount = -1
+        self.error = None
 
     def __setattr__(self, name, value):
         self.__dict__[name] = value
@@ -700,6 +701,7 @@ class UdaExecCursor:
 
     def callproc(self, procname, params, runAlways=False,
                  continueOnError=False, ignoreErrors=[], **kwargs):
+        self.error = None
         self.skip = self.udaexec.skip and not runAlways
         if not self.skip:
             start = time.time()
@@ -713,6 +715,7 @@ class UdaExecCursor:
                 return outparams
             except Exception as e:
                 duration = time.time() - start
+                self.error = e
                 if isinstance(e, api.DatabaseError) and e.code in ignoreErrors:
                     logger.error(
                         "Procedure Failed! Duration: %.3f seconds, "
@@ -776,6 +779,7 @@ class UdaExecCursor:
                  continueOnError=False, logParamFrequency=1,
                  logParamCharLimit=80, ignoreErrors=[],
                  **kwargs):
+        self.error = None
         self.skip = self.udaexec.skip and not runAlways
         if not self.skip:
             start = time.time()
@@ -798,6 +802,7 @@ class UdaExecCursor:
                 self.types = None
                 self.rowcount = -1
                 duration = time.time() - start
+                self.error = e
                 if isinstance(e, api.DatabaseError) and e.code in ignoreErrors:
                     logger.error(
                         "Query Failed! Duration: %.3f seconds, Query: %s%s, "

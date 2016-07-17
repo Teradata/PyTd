@@ -199,10 +199,10 @@ def checkStatus(rc, hEnv=SQL_NULL_HANDLE, hDbc=SQL_NULL_HANDLE,
                 logger.debug((u"{} returned non-successful error code "
                               u"{}: [{}] {}").format(method, rc, i[0], i[1]))
                 msg = ", ".join(map(lambda m: m[1], info))
-                if re.search(r'[^0-9\s]', msg) is None:
+                if re.search(r'[^0-9\s]', msg) is None or i[0] == 'I':
                     msg = msg + (". Check that the ODBC driver is installed "
-                                 "and the ODBCINI environment variable is"
-                                 "correctly set.")
+                                 "and the ODBCINI or ODBCINST environment "
+                                 "variables are correctly set.")
                 raise DatabaseError(i[2], u"[{}] {}".format(i[0], msg), i[0])
             else:
                 logger.debug(
@@ -488,6 +488,7 @@ class OdbcCursor (util.Cursor):
         connection.cursors.append(self)
 
     def callproc(self, procname, params, queryTimeout=0):
+        self._checkClosed()
         query = "CALL {} (".format(procname)
         for i in range(0, len(params)):
             if i > 0:
@@ -518,6 +519,7 @@ class OdbcCursor (util.Cursor):
             method="SQLSetStmtStmtAttr - SQL_ATTR_QUERY_TIMEOUT")
 
     def execute(self, query, params=None, queryTimeout=0):
+        self._checkClosed()
         if params:
             self.executemany(query, [params, ], queryTimeout)
         else:
@@ -534,6 +536,7 @@ class OdbcCursor (util.Cursor):
         return self
 
     def executemany(self, query, params, batch=False, queryTimeout=0):
+        self._checkClosed()
         self._free()
         # Prepare the query
         rc = odbc.SQLPrepareW(
@@ -763,6 +766,7 @@ class OdbcCursor (util.Cursor):
         self.iterator = rowIterator(self)
 
     def nextset(self):
+        self._checkClosed()
         if self.moreResults is None:
             self._checkForMoreResults()
         if self.moreResults:
@@ -781,6 +785,12 @@ class OdbcCursor (util.Cursor):
         rc = odbc.SQLFreeStmt(self.hStmt, SQL_RESET_PARAMS)
         checkStatus(
             rc, hStmt=self.hStmt, method="SQLFreeStmt - SQL_RESET_PARAMS")
+
+    def _checkClosed(self):
+        if not self.hStmt:
+            raise InterfaceError("CURSOR_CLOSED",
+                                 "Operations cannot be performed on a "
+                                 "closed cursor.")
 
 
 def _convertLineFeeds(query):

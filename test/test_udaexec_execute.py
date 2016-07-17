@@ -605,6 +605,24 @@ END;"""):
                              password='pa$$$$word') as session:
             session.execute("SELECT * FROM DBC.DBCINFO")
 
+    def testOperationsOnClosedCursor(self):
+        if self.dsn == "ODBC":
+            with udaExec.connect(self.dsn) as session:
+                cursor = session.cursor()
+                cursor.close()
+                error = None
+                try:
+                    cursor.execute("SELECT * FROM DBC.DBCINFO")
+                except teradata.InterfaceError as e:
+                    error = e
+                self.assertIsNotNone(error)
+
+    def testIgnoreError(self):
+        with udaExec.connect(self.dsn) as session:
+            cursor = session.execute("DROP DATABASE ThisDatabaseDoesNotExist",
+                                     ignoreErrors=(3802,))
+            self.assertIsNotNone(cursor.error)
+
 
 def fetchRows(test, count, randomset, session):
     result = session.execute(
@@ -670,5 +688,5 @@ def runTest(testName):
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testDollarSignInPassword')
+    # runTest('testIgnoreError')
     unittest.main()
