@@ -54,6 +54,7 @@ SQL_ATTR_PARAMSET_SIZE = 22
 SQL_PARAM_BIND_BY_COLUMN = 0
 SQL_NULL_DATA, SQL_NTS = -1, -3
 SQL_IS_POINTER, SQL_IS_UINTEGER, SQL_IS_INTEGER = -4, -5, -6
+SQL_FETCH_NEXT, SQL_FETCH_FIRST, SQL_FETCH_LAST = 1, 2, 4
 
 SQL_SIGNED_OFFSET = -20
 SQL_C_BINARY, SQL_BINARY, SQL_VARBINARY, SQL_LONGVARBINARY = -2, -2, -3, -4
@@ -77,6 +78,7 @@ SQLINTEGER = ctypes.c_int
 SQLFLOAT = ctypes.c_float
 SQLDOUBLE = ctypes.c_double
 SQLBYTE = ctypes.c_ubyte
+SQLCHAR = ctypes.c_char
 SQLWCHAR = ctypes.c_wchar
 SQLRETURN = SQLSMALLINT
 SQLPOINTER = ctypes.c_void_p
@@ -92,6 +94,7 @@ FALSE = 0
 
 odbc = None
 hEnv = None
+drivers = None
 lock = threading.Lock()
 pyVer = sys.version_info[0]
 osType = platform.system()
@@ -270,6 +273,9 @@ def initFunctionPrototypes():
     prototype(odbc.SQLRowCount, SQLHANDLE, PTR(SQLLEN))
     prototype(odbc.SQLBindCol, SQLHANDLE, SQLUSMALLINT, SQLSMALLINT,
               SQLPOINTER, SQLLEN, PTR(SQLLEN))
+    prototype(odbc.SQLDrivers, SQLHANDLE, SQLUSMALLINT, PTR(SQLCHAR),
+              SQLSMALLINT, PTR(SQLSMALLINT), PTR(SQLCHAR), SQLSMALLINT,
+              PTR(SQLSMALLINT))
 
 
 def initOdbcLibrary(odbcLibPath=None):
@@ -289,6 +295,27 @@ def initOdbcLibrary(odbcLibPath=None):
                     odbcLibPath = 'libodbc.so'
             logger.info("Loading ODBC Library: %s", odbcLibPath)
             odbc = ctypes.cdll.LoadLibrary(odbcLibPath)
+
+
+def initDriverList():
+    global drivers
+    if drivers is None:
+        drivers = []
+        description = ctypes.create_string_buffer(SMALL_BUFFER_SIZE)
+        descriptionLength = SQLSMALLINT()
+        attributesLength = SQLSMALLINT()
+        rc = SQL_SUCCESS
+        direction = SQL_FETCH_FIRST
+        while True:
+            rc = odbc.SQLDrivers(hEnv, direction, description,
+                                 len(description), ADDR(descriptionLength),
+                                 None, 0, attributesLength)
+            checkStatus(rc, hEnv=hEnv)
+            if rc == SQL_NO_DATA:
+                break
+            drivers.append(description.value.decode("utf-8"))
+            direction = SQL_FETCH_NEXT
+        logger.info("Available drivers: {}".format(", ".join(drivers)))
 
 
 def initOdbcEnv():
@@ -317,8 +344,38 @@ def init(odbcLibPath=None):
         initOdbcLibrary(odbcLibPath)
         initFunctionPrototypes()
         initOdbcEnv()
+        initDriverList()
     finally:
         lock.release()
+
+
+def determineDriver(dbType, driver):
+    retval = driver
+    if driver is not None:
+        if driver not in drivers:
+            raise InterfaceError(
+                "DRIVER_NOT_FOUND",
+                "No driver found with name '{}'. "
+                " Available drivers: {}".format(driver, ",".join(drivers)))
+    else:
+        matches = []
+        for driver in drivers:
+            if dbType in driver:
+                matches.append(driver)
+        if not matches:
+            raise InterfaceError(
+                "DRIVER_NOT_FOUND",
+                "No driver found for '{}'.  "
+                "Available drivers: {}".format(dbType, ",".join(drivers)))
+        else:
+            retval = matches[len(matches) - 1]
+            if len(matches) > 1:
+                logger.warning(
+                    "More than one driver found "
+                    "for '{}'.  Using '{}'."
+                    "  Specify the 'driver' option to "
+                    "select a specific driver.".format(dbType, retval))
+    return retval
 
 
 class OdbcConnection:
@@ -329,7 +386,7 @@ class OdbcConnection:
                  username=None, password=None, autoCommit=False,
                  transactionMode=None, queryBands=None, odbcLibPath=None,
                  dataTypeConverter=datatypes.DefaultDataTypeConverter(),
-                 **kwargs):
+                 driver=None, **kwargs):
         """Creates an ODBC connection."""
         self.hDbc = SQLPOINTER()
         self.cursorCount = 0
@@ -338,11 +395,14 @@ class OdbcConnection:
         self.dbType = dbType
         self.converter = dataTypeConverter
 
+        # Initialize connection handle
+        init(odbcLibPath)
+
         # Build connect string
         extraParams = set(k.lower() for k in kwargs)
         connectParams = collections.OrderedDict()
         if "dsn" not in extraParams:
-            connectParams["DRIVER"] = dbType
+            connectParams["DRIVER"] = determineDriver(dbType, driver)
         if system:
             connectParams["DBCNAME"] = system
         if username:
@@ -356,8 +416,6 @@ class OdbcConnection:
         connectString = u";".join(u"{}={}".format(key, value)
                                   for key, value in connectParams.items())
 
-        # Initialize connection handle
-        init(odbcLibPath)
         rc = odbc.SQLAllocHandle(SQL_HANDLE_DBC, hEnv, ADDR(self.hDbc))
         checkStatus(rc, hEnv=hEnv, method="SQLAllocHandle")
 

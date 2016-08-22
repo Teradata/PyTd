@@ -53,6 +53,14 @@ class TdOdbcTest (unittest.TestCase):
         self.assertIsNotNone(conn)
         conn.close()
 
+    def testConnectBadDriver(self):
+        with self.assertRaises(tdodbc.InterfaceError) as cm:
+            tdodbc.connect(
+                system=system, username=self.username,
+                password=self.password,
+                driver="BadDriver")
+        self.assertEqual(cm.exception.code, "DRIVER_NOT_FOUND")
+
     def testCursorBasics(self):
         with tdodbc.connect(system=system, username=self.username,
                             password=self.password, autoCommit=True) as conn:

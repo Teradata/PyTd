@@ -684,7 +684,7 @@ udaExec.checkpoint()
 def runTest(testName):
     suite = unittest.TestSuite()
     suite.addTest(UdaExecExecuteTest_ODBC(testName))  # @UndefinedVariable # noqa
-    # suite.addTest(UdaExecExecuteTest_HTTPS(testName))  # @UndefinedVariable # noqa
+    suite.addTest(UdaExecExecuteTest_HTTPS(testName))  # @UndefinedVariable # noqa
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':

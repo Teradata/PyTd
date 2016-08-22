@@ -918,6 +918,16 @@ class UdaExecDataTypesTest ():
                     self.assertEqual(row.b, periodUntilChange)
                     self.assertIsNone(row.c)
 
+    def testLargeTestView(self):
+        with udaExec.connect(self.dsn, username=self.username,
+                             password=self.password) as conn:
+            scriptFile = os.path.join(
+                os.path.dirname(__file__), "testlargeview.sql")
+            conn.execute(file=scriptFile)
+            view = conn.execute("SHOW VIEW LARGE_TEST_VIEW").fetchone()[0]
+            # print(view)
+            self.assertEqual(len(view), 30398)
+
 # The unit tests in the UdaExecExecuteTest are execute once for each named
 # data source below.
 util.createTestCasePerDSN(
@@ -945,5 +955,5 @@ def runTest(testName):
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    #runTest('testBinaryDataTypes')
+    # runTest('testLargeTestView')
     unittest.main()
