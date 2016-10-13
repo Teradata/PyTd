@@ -291,6 +291,27 @@ class UdaExecExecuteTest ():
             self.assertEqual(len(rows), 0)
             self.assertIsNone(cursor.fetchone())
 
+    def testProcedureInOutParamNull(self):
+        if self.dsn == "ODBC":
+            with udaExec.connect("ODBC", username=self.username,
+                                 password=self.password) as conn:
+                self.assertIsNotNone(conn)
+                for r in conn.execute(
+                    """REPLACE PROCEDURE testProcedure1
+                        (IN p1 INTEGER,  INOUT p2 INTEGER)
+                        BEGIN
+                            SET p2 = p1;
+                        END;"""):
+                    logger.info(r)
+            with udaExec.connect(self.dsn, username=self.username,
+                                 password=self.password) as conn:
+                for i in range(0, 10):
+                    result = conn.callproc(
+                        "testProcedure1",
+                        (i, teradata.InOutParam(None, "myOutParam",
+                                                dataType='INTEGER')))
+                    self.assertEqual(result["myOutParam"], i)
+
     def testProcedure(self):
         # REST-307 - Unable to create Stored Procedure using REST, always use
         # ODBC.
@@ -688,5 +709,5 @@ def runTest(testName):
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testIgnoreError')
+    # runTest('testProcedureInOutParamNull')
     unittest.main()

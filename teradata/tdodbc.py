@@ -914,7 +914,10 @@ def _getParamValue(val, valueType, batch):
             length = len(param)
         elif isinstance(val, InOutParam):
             length = SMALL_BUFFER_SIZE if val.size is None else val.size
-            param = _inputStr(val.inValue, length)
+            if val.inValue:
+                param = _inputStr(val.inValue, length)
+            else:
+                param = _createBuffer(length)
             val.setValueFunc(lambda: _outputStr(param))
         elif isinstance(val, OutParam):
             length = SMALL_BUFFER_SIZE if val.size is None else val.size
