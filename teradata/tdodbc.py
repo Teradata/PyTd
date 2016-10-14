@@ -645,7 +645,7 @@ class OdbcCursor (util.Cursor):
                     inputOutputType = _getInputOutputType(val)
                     valueType, paramType = _getParamValueType(
                         dataTypes[paramNum])
-                    param, length = _getParamValue(val, valueType, False)
+                    param, length, null = _getParamValue(val, valueType, False)
                     paramArray.append(param)
                     if param is not None:
                         if valueType == SQL_C_BINARY:
@@ -661,6 +661,10 @@ class OdbcCursor (util.Cursor):
                             bufSize = SQLLEN(ctypes.sizeof(param))
                             lengthArray.append(SQLLEN(SQL_NTS))
                             columnSize = SQLULEN(length)
+                        if null:
+                            # Handle INOUT parameter with NULL input value.
+                            lengthArray.pop(-1)
+                            lengthArray.append(SQLLEN(SQL_NULL_DATA))
                     else:
                         bufSize = SQLLEN(0)
                         columnSize = SQLULEN(0)
@@ -724,7 +728,7 @@ class OdbcCursor (util.Cursor):
             valueType, paramType = _getParamValueType(dataTypes[paramNum])
             maxLen = 0
             for paramSetNum in range(0, paramSetSize):
-                param, length = _getParamValue(
+                param, length, null = _getParamValue(  # @UnusedVariable
                     params[paramSetNum][paramNum], valueType, True)
                 if length > maxLen:
                     maxLen = length
@@ -878,17 +882,25 @@ def _getParamValueType(dataType):
     return valueType, paramType
 
 
+def _getParamBufferSize(val):
+    return SMALL_BUFFER_SIZE if val.size is None else val.size
+
+
 def _getParamValue(val, valueType, batch):
     length = 0
+    null = False
     if val is None:
         param = None
     elif valueType == SQL_C_BINARY:
         ba = val
         if isinstance(val, InOutParam):
             ba = val.inValue
+            if val.inValue is None:
+                null = True
+                ba = bytearray(_getParamBufferSize(val))
         elif isinstance(val, OutParam):
-            ba = bytearray(SMALL_BUFFER_SIZE if val.size is None else val.size)
-        if not isinstance(ba, bytearray):
+            ba = bytearray(_getParamBufferSize(val))
+        if ba is not None and not isinstance(ba, bytearray):
             raise InterfaceError("Expected bytearray for BINARY parameter.")
         length = len(ba)
         if batch:
@@ -902,6 +914,9 @@ def _getParamValue(val, valueType, batch):
         f = val
         if isinstance(val, InOutParam):
             f = val.inValue
+            if f is None:
+                null = True
+                f = float(0)
         elif isinstance(val, OutParam):
             f = float(0)
         param = SQLDOUBLE(f if not util.isString(f) else float(f))
@@ -913,20 +928,21 @@ def _getParamValue(val, valueType, batch):
             param = _convertParam(val)
             length = len(param)
         elif isinstance(val, InOutParam):
-            length = SMALL_BUFFER_SIZE if val.size is None else val.size
-            if val.inValue:
+            length = _getParamBufferSize(val)
+            if val.inValue is not None:
                 param = _inputStr(val.inValue, length)
             else:
                 param = _createBuffer(length)
+                null = True
             val.setValueFunc(lambda: _outputStr(param))
         elif isinstance(val, OutParam):
-            length = SMALL_BUFFER_SIZE if val.size is None else val.size
+            length = _getParamBufferSize(val)
             param = _createBuffer(length)
             val.setValueFunc(lambda: _outputStr(param))
         else:
             param = _inputStr(val)
             length = len(param)
-    return param, length
+    return param, length, null
 
 
 def _getFetchSize(cursor):

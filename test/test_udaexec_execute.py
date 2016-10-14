@@ -298,9 +298,22 @@ class UdaExecExecuteTest ():
                 self.assertIsNotNone(conn)
                 for r in conn.execute(
                     """REPLACE PROCEDURE testProcedure1
-                        (IN p1 INTEGER,  INOUT p2 INTEGER)
+                        (IN p1 INTEGER,  INOUT p2 INTEGER,
+                            INOUT p3 VARCHAR(200), INOUT p4 FLOAT,
+                            INOUT p5 VARBYTE(128))
                         BEGIN
-                            SET p2 = p1;
+                            IF p2 IS NULL THEN
+                                SET p2 = p1;
+                            END IF;
+                            IF p3 IS NULL THEN
+                                SET p3 = 'PASS';
+                            END IF;
+                            IF p4 IS NULL THEN
+                                SET p4 = p1;
+                            END IF;
+                            IF p5 IS NULL THEN
+                                SET p5 = 'AABBCCDDEEFF'XBV;
+                            END IF;
                         END;"""):
                     logger.info(r)
             with udaExec.connect(self.dsn, username=self.username,
@@ -308,9 +321,14 @@ class UdaExecExecuteTest ():
                 for i in range(0, 10):
                     result = conn.callproc(
                         "testProcedure1",
-                        (i, teradata.InOutParam(None, "myOutParam",
-                                                dataType='INTEGER')))
-                    self.assertEqual(result["myOutParam"], i)
+                        (i, teradata.InOutParam(None, "p2",
+                                                dataType='INTEGER'),
+                         teradata.InOutParam(None, "p3", size=200),
+                         teradata.InOutParam(None, "p4"),
+                         teradata.InOutParam(None, "p5")))
+                    self.assertEqual(result["p2"], i)
+                    self.assertEqual(result["p3"], "PASS")
+                    self.assertEqual(result["p4"], i)
 
     def testProcedure(self):
         # REST-307 - Unable to create Stored Procedure using REST, always use
@@ -709,5 +727,5 @@ def runTest(testName):
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testProcedureInOutParamNull')
+    # runTest('testProcedure')
     unittest.main()
