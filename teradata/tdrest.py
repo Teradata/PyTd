@@ -83,9 +83,9 @@ class RestConnection:
         self.autoCommit = False
         if port is None:
             if protocol == 'http':
-                port = 1080
+                port = '1080'
             elif protocol == 'https':
-                port = 1443
+                port = '1443'
             else:
                 raise InterfaceError(
                     CONFIG_ERROR, "Unsupported protocol: {}".format(protocol))
@@ -349,11 +349,12 @@ class HttpConnection:
 
     def __init__(self, template):
         self.template = template
+        host = template.host + ":" + template.port
         if template.protocol.lower() == "http":
-            self.conn = httplib.HTTPConnection(template.host, template.port)
+            self.conn = httplib.HTTPConnection(host)
         elif template.protocol.lower() == "https":
             self.conn = httplib.HTTPSConnection(
-                template.host, template.port, context=template.sslContext)
+                host, context=template.sslContext)
         else:
             raise InterfaceError(
                 REST_ERROR, "Unknown protocol: %s" % template.protocol)
