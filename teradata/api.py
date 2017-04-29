@@ -166,5 +166,9 @@ STRING = str
 NUMBER = decimal.Decimal
 ROWID = int
 DateFromTicks = datetime.date.fromtimestamp
-TimeFromTicks = lambda x: datetime.datetime.fromtimestamp(x).time()
+
+
+def TimeFromTicks(x):
+    return datetime.datetime.fromtimestamp(x).time()
+
 TimestampFromTicks = datetime.datetime.fromtimestamp

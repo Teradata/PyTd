@@ -23,16 +23,17 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import sys
-import ctypes
-import threading
 import atexit
+import collections
+import ctypes
 import platform
 import re
-import collections
+import sys
+import threading
 
 from . import util, datatypes
 from .api import *  # @UnusedWildImport # noqa
+
 
 logger = logging.getLogger(__name__)
 
@@ -106,24 +107,45 @@ QUERY_TIMEOUT = 120
 if pyVer > 2:
     unicode = str  # @ReservedAssignment
 
+# Define OS specific methods for handling buffers and strings.
 if osType == "Darwin" or osType == "Windows" or osType.startswith('CYGWIN'):
     # Mac OSx and Windows
-    _createBuffer = lambda l: ctypes.create_unicode_buffer(l)
-    _inputStr = lambda s, l = None: None if s is None else \
-        ctypes.create_unicode_buffer((s if util.isString(s) else str(s)), l)
-    _outputStr = lambda s: s.value
-    _convertParam = lambda s: None if s is None else (
-        s if util.isString(s) else str(s))
+    def _createBuffer(l):
+        return ctypes.create_unicode_buffer(l)
+
+    def _inputStr(s, l=None):
+        if s is None:
+            return None
+        return ctypes.create_unicode_buffer(
+            (s if util.isString(s) else str(s)), l)
+
+    def _outputStr(s):
+        return s.value
+
+    def _convertParam(s):
+        if s is None:
+            return None
+        return s if util.isString(s) else str(s)
 else:
     # Unix/Linux
     # Multiply by 3 as one UTF-16 character can require 3 UTF-8 bytes.
-    _createBuffer = lambda l: ctypes.create_string_buffer(l * 3)
-    _inputStr = lambda s, l = None: None if s is None else \
-        ctypes.create_string_buffer((s if util.isString(s) else str(s)).encode(
-            'utf8'), l)
-    _outputStr = lambda s: unicode(s.raw.partition(b'\00')[0], 'utf8')
-    _convertParam = lambda s: None if s is None else (
-        (s if util.isString(s) else str(s)).encode('utf8'))
+    def _createBuffer(l):
+        return ctypes.create_string_buffer(l * 3)
+
+    def _inputStr(s, l=None):
+        if s is None:
+            return None
+        return ctypes.create_string_buffer(
+            (s if util.isString(s) else str(s)).encode('utf8'), l)
+
+    def _outputStr(s):
+        return unicode(s.raw.partition(b'\00')[0], 'utf8')
+
+    def _convertParam(s):
+        if s is None:
+            return None
+        return (s if util.isString(s) else str(s)).encode('utf8')
+
     SQLWCHAR = ctypes.c_char
 
 connections = []
@@ -1033,12 +1055,12 @@ def _setupColumnBuffers(cursor, buffers, bufSizes, dataTypes, indicators,
     return fetchSize
 
 
-def _getLobData(cursor, colIndex, buf):
+def _getLobData(cursor, colIndex, buf, binary):
     """ Get LOB Data """
     length = SQLLEN()
     dataType = SQL_C_WCHAR
     bufSize = ctypes.sizeof(buf)
-    if cursor.description[colIndex - 1][1] == BINARY:
+    if binary:
         dataType = SQL_C_BINARY
     rc = odbc.SQLGetData(
         cursor.hStmt, colIndex, dataType, buf, bufSize, ADDR(length))
@@ -1099,9 +1121,9 @@ def _getRow(cursor, buffers, bufSizes, dataTypes, indicators, rowIndex):
                 val = ctypes.c_double.from_buffer(buf,
                                                   bufSize * rowIndex).value
             elif dataType == SQL_WLONGVARCHAR:
-                val = _getLobData(cursor, col, buf)
+                val = _getLobData(cursor, col, buf, False)
             elif dataType == SQL_LONGVARBINARY:
-                val = _getLobData(cursor, col, buf)
+                val = _getLobData(cursor, col, buf, True)
             else:
                 chLen = (int)(bufSize / ctypes.sizeof(SQLWCHAR))
                 chBuf = (SQLWCHAR * chLen)

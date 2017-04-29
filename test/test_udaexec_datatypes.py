@@ -509,7 +509,10 @@ class UdaExecDataTypesTest ():
                             self.assertEqual(t.month, 5)
                             self.assertEqual(t.day, 18)
                         if count != 4:
-                            self.assertEqual(t.hour, 12)
+                            # Per REST-302 - Time is being returned in GMT.
+                            if count != 1 or self.dsn == "ODBC":
+                                self.assertEqual(t.hour, 12,
+                                                 "Count is {}".format(count))
                             self.assertEqual(t.minute, 34)
                             self.assertEqual(t.second, 56)
                             self.assertEqual(t.microsecond, 789000)
@@ -951,9 +954,9 @@ udaExec.checkpoint()
 def runTest(testName):
     suite = unittest.TestSuite()
     suite.addTest(UdaExecDataTypesTest_ODBC(testName))  # @UndefinedVariable # noqa
-    suite.addTest(UdaExecDataTypesTest_HTTPS(testName))  # @UndefinedVariable # noqa
+    suite.addTest(UdaExecDataTypesTest_HTTP(testName))  # @UndefinedVariable # noqa
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testLargeTestView')
+    # runTest('testDateAndTimeDataTypes')
     unittest.main()
