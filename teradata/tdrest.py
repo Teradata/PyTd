@@ -95,7 +95,7 @@ class RestConnection:
                                  "set to location of "
                                  "TDREST server.")
         self.template = RestTemplate(
-            protocol, host, port, webContext, username, password,
+            protocol, host, int(port), webContext, username, password,
             accept='application/vnd.com.teradata.rest-v1.0+json',
             verifyCerts=util.booleanValue(verifyCerts), sslContext=sslContext)
         with self.template.connect() as conn:
