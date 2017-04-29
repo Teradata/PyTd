@@ -662,6 +662,14 @@ END;"""):
                                      ignoreErrors=(3802,))
             self.assertIsNotNone(cursor.error)
 
+    def testMultipleResultSets(self):
+        with udaExec.connect(self.dsn) as session:
+            cursor = session.execute("""SELECT 'string' as \"string\";
+                SELECT 1 as \"integer\"""")
+            self.assertEqual(cursor.description[0][0], 'string')
+            self.assertTrue(cursor.nextset())
+            self.assertEqual(cursor.description[0][0], 'integer')
+
 
 def fetchRows(test, count, randomset, session):
     result = session.execute(
@@ -723,9 +731,9 @@ udaExec.checkpoint()
 def runTest(testName):
     suite = unittest.TestSuite()
     suite.addTest(UdaExecExecuteTest_ODBC(testName))  # @UndefinedVariable # noqa
-    suite.addTest(UdaExecExecuteTest_HTTPS(testName))  # @UndefinedVariable # noqa
+    suite.addTest(UdaExecExecuteTest_HTTP(testName))  # @UndefinedVariable # noqa
     unittest.TextTestRunner().run(suite)
 
 if __name__ == '__main__':
-    # runTest('testProcedure')
+    # runTest('testMultipleResultSets')
     unittest.main()

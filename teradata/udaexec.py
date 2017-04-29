@@ -838,7 +838,12 @@ class UdaExecCursor:
     def nextset(self):
         if self.skip:
             return None
-        return self.cursor.nextset()
+        hasNext = self.cursor.nextset()
+        if hasNext:
+            self.description = self.cursor.description
+            self.types = self.cursor.types
+            self.rowcount = self.cursor.rowcount
+        return hasNext
 
     def setinputsizes(self, sizes):
         self.cursor.setinputsizes(self, sizes)
