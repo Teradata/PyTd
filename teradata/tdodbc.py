@@ -404,8 +404,8 @@ class OdbcConnection:
 
     """Represents a Connection to Teradata using ODBC."""
 
-    def __init__(self, dbType="Teradata", system=None,
-                 username=None, password=None, autoCommit=False,
+    def __init__(self, dbType="Teradata", system=None, username=None,
+                 password=None, database=None, autoCommit=False,
                  transactionMode=None, queryBands=None, odbcLibPath=None,
                  dataTypeConverter=datatypes.DefaultDataTypeConverter(),
                  driver=None, **kwargs):
@@ -431,6 +431,8 @@ class OdbcConnection:
             connectParams["UID"] = username
         if password:
             connectParams["PWD"] = password
+        if database:
+           connectParams["DATABASE"] = database
         if transactionMode:
             connectParams["SESSIONMODE"] = "Teradata" \
                 if transactionMode == "TERA" else transactionMode
