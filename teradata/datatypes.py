@@ -230,7 +230,7 @@ class DefaultDataTypeConverter (DataTypeConverter):
         logger.trace(
             "Converting \"%s\" to (%s, %s).", value, dataType, typeCode)
         if value is not None:
-            if typecode == STRING:
+            if typeCode == STRING:
                 return value
             elif typeCode == NUMBER:
                 try:
