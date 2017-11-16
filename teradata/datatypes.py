@@ -272,12 +272,12 @@ class DefaultDataTypeConverter (DataTypeConverter):
             elif typeCode == BINARY:
                 if util.isString(value):
                     return bytearray.fromhex(value)
-            elif dataType.startswith("INTERVAL"):
+            elif typeCode == Interval:
                 return convertInterval(dataType, value)
-            elif dataType.startswith("JSON") and util.isString(value):
+            elif typeCode == JSON and util.isString(value):
                 return json.loads(value, parse_int=decimal.Decimal,
                                   parse_float=decimal.Decimal)
-            elif dataType.startswith("PERIOD"):
+            elif typeCode == Period:
                 return convertPeriod(dataType, value)
         return value
 
@@ -296,6 +296,12 @@ class DefaultDataTypeConverter (DataTypeConverter):
             typeCode = Timestamp
         elif dataType.startswith("TIME"):
             typeCode = Time
+        elif dataType.startswith("INTERVAL"):
+            typeCode = Interval
+        elif dataType.startswith("JSON"):
+            typeCode = JSON
+        elif dataType.startswith("PERIOD"):
+            typeCode = Period
         return typeCode
 
 
