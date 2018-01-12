@@ -408,7 +408,7 @@ class OdbcConnection:
                  username=None, password=None, autoCommit=False,
                  transactionMode=None, queryBands=None, odbcLibPath=None,
                  dataTypeConverter=datatypes.DefaultDataTypeConverter(),
-                 driver=None, **kwargs):
+                 driver=None, authentication=None, **kwargs):
         """Creates an ODBC connection."""
         self.hDbc = SQLPOINTER()
         self.cursorCount = 0
@@ -427,6 +427,8 @@ class OdbcConnection:
             connectParams["DRIVER"] = determineDriver(dbType, driver)
         if system:
             connectParams["DBCNAME"] = system
+        if authentication:
+            connectParams["AUTHENTICATION MECHANISM"] = authentication
         if username:
             connectParams["UID"] = username
         if password:
