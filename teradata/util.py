@@ -42,6 +42,7 @@ def trace(self, message, *args, **kws):
     # Yes, logger takes its '*args' as 'args'.
     if self.isEnabledFor(TRACE):
         self._log(TRACE, message, args, **kws)
+
 logging.TRACE = TRACE
 logging.Logger.trace = trace
 
@@ -125,20 +126,15 @@ class Cursor:
             size = self.arraysize
         self.fetchSize = size
         rows = []
-        count = 0
-        for row in self:
+        for row, count in enumerate(self):
             rows.append(row)
-            count += 1
             if count == size:
                 break
         return rows
 
     def fetchall(self):
         self.fetchSize = self.arraysize
-        rows = []
-        for row in self:
-            rows.append(row)
-        return rows
+        return list(self)
 
     def nextset(self):
         # Abstract method, defined by convention only

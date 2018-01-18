@@ -85,6 +85,8 @@ SQLRETURN = SQLSMALLINT
 SQLPOINTER = ctypes.c_void_p
 SQLHANDLE = ctypes.c_void_p
 
+SQLWCHAR_SIZE = ctypes.sizeof(SQLWCHAR)
+
 ADDR = ctypes.byref
 PTR = ctypes.POINTER
 ERROR_BUFFER_SIZE = 2 ** 10
@@ -766,7 +768,7 @@ class OdbcCursor (util.Cursor):
                 paramArrays.append((SQLDOUBLE * paramSetSize)())
             else:
                 maxLen += 1
-                valueSize = SQLLEN(ctypes.sizeof(SQLWCHAR) * maxLen)
+                valueSize = SQLLEN(SQLWCHAR_SIZE * maxLen)
                 paramArrays.append(_createBuffer(paramSetSize * maxLen))
             lengthArrays.append((SQLLEN * paramSetSize)())
             for paramSetNum in range(0, paramSetSize):
@@ -1125,7 +1127,7 @@ def _getRow(cursor, buffers, bufSizes, dataTypes, indicators, rowIndex):
             elif dataType == SQL_LONGVARBINARY:
                 val = _getLobData(cursor, col, buf, True)
             else:
-                chLen = (int)(bufSize / ctypes.sizeof(SQLWCHAR))
+                chLen = (bufSize // SQLWCHAR_SIZE)
                 chBuf = (SQLWCHAR * chLen)
                 val = _outputStr(chBuf.from_buffer(buf,
                                                    bufSize * rowIndex))
