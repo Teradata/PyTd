@@ -168,6 +168,21 @@ ROWID = int
 DateFromTicks = datetime.date.fromtimestamp
 
 
+class Interval(str):
+    """String representation of the Interval dataType."""
+    pass
+
+
+class JSON(str):
+    """String representation of the JSON dataType."""
+    pass
+
+
+class Period(str):
+    """String representation of the Period dataType."""
+    pass
+
+
 def TimeFromTicks(x):
     return datetime.datetime.fromtimestamp(x).time()
 
