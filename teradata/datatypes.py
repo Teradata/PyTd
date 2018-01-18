@@ -47,15 +47,15 @@ secondIntervalRegEx = re.compile("^(-?)(\d+\.?\d*)$")
 periodRegEx1 = re.compile("\('(.*)',\s*'(.*)'\)")
 periodRegEx2 = re.compile("ResultStruct:PERIOD\(.*\)\[(.*),\s*(.*)\]")
 
-NUMBER_TYPES = ("BYTEINT", "BIGINT", "DECIMAL", "DOUBLE", "DOUBLE PRECISION",
+NUMBER_TYPES = {"BYTEINT", "BIGINT", "DECIMAL", "DOUBLE", "DOUBLE PRECISION",
                 "INTEGER", "NUMBER", "SMALLINT", "FLOAT", "INT", "NUMERIC",
-                "REAL")
+                "REAL"}
 
-INT_TYPES = ("BYTEINT", "BIGINT", "INTEGER", "SMALLINT", "INT")
+INT_TYPES = {"BYTEINT", "BIGINT", "INTEGER", "SMALLINT", "INT"}
 
-FLOAT_TYPES = ("FLOAT", "DOUBLE", "DOUBLE PRECISION", "REAL")
+FLOAT_TYPES = {"FLOAT", "DOUBLE", "DOUBLE PRECISION", "REAL"}
 
-BINARY_TYPES = ("BLOB", "BYTE", "VARBYTE")
+BINARY_TYPES = {"BLOB", "BYTE", "VARBYTE"}
 
 
 def _getMs(m, num):
