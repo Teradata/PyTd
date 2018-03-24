@@ -265,6 +265,15 @@ class RestCursor (util.Cursor):
 
     def _handleResultSet(self, results, hasOutParams=False):
         outParams = None
+        #Check for error message and then go ahead if none
+        try:
+            message = results.expectField("message", pulljson.FIELD_NAME, readAll=True)
+            if message is not None:
+                return message
+        except pulljson.JSONParseError as e:
+            #continue as there is no error/message
+            pass
+
         if hasOutParams:
             outParams = results.expectField(
                 "outParams", pulljson.ARRAY, readAll=True)
