@@ -117,6 +117,14 @@ class JSONPullParser (object):
            readAll=True."""
         return self._expectValue(ARRAY_VALUE, expectedType, allowNull, readAll)
 
+    def expectValue(self, eventType, expectedType):
+        return self._expectValue(
+            eventType,
+            expectedType,
+            allowNull=True,
+            readAll=True
+        )
+
     def _expectValue(self, eventType, expectedType, allowNull, readAll):
         event = self.nextEvent()
         if event.type == eventType:
