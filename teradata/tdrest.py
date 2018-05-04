@@ -238,8 +238,27 @@ class RestCursor (util.Cursor):
             results.expectObject()
             return self._handleResultSet(results, hasOutParams)
         except (pulljson.JSONParseError) as e:
+            ##Check if there was an error in executing the statement
+            message = self._check_for_messages(results)
+            if message is not None:
+                raise InterfaceError(None, message)
             raise InterfaceError(
                 e.code, "Error reading JSON response: " + e.msg)
+
+    def _check_for_messages(self, results):
+        try:
+            return results.expectValue(
+                pulljson.FIELD_VALUE, pulljson.STRING
+            )
+        except pulljson.JSONParseError as parse_error:
+            '''
+             Do nothing here, reaching here means there was
+             no error or message attribute in the 
+             results and its fine to go ahead without this 
+             attribute
+             
+            '''
+
 
     def _execute(self, query, params=None, outParams=None, batch=False,
                  queryTimeout=None):
@@ -265,15 +284,6 @@ class RestCursor (util.Cursor):
 
     def _handleResultSet(self, results, hasOutParams=False):
         outParams = None
-        #Check for error message and then go ahead if none
-        try:
-            message = results.expectField("message", pulljson.FIELD_NAME, readAll=True)
-            if message is not None:
-                return message
-        except pulljson.JSONParseError as e:
-            #continue as there is no error/message
-            pass
-
         if hasOutParams:
             outParams = results.expectField(
                 "outParams", pulljson.ARRAY, readAll=True)
