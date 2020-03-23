@@ -36,6 +36,7 @@ import string
 import subprocess
 import sys
 import time
+import math
 
 from . import tdodbc, util, api, datatypes
 from . import tdrest  # @UnresolvedImport
@@ -869,6 +870,19 @@ class UdaExecCursor:
         self.close()
 
 
+def _isna(var):
+    """function to check if value is numpy nan
+
+    Args:
+        var (float): var to be tested, could be any type, will only evaluate
+            null check if it's a float
+    Returns:
+        bool: True if nan value"""
+    var_is_null = False
+    if repr(var) == 'nan' and isinstance(var, float):
+        var_is_null = math.isnan(x)
+    return var_is_null
+
 def _getParamsString(params, logParamFrequency=1, logParamCharLimit=80):
     paramsStr = ""
     if params and logParamFrequency > 0:
@@ -893,9 +907,12 @@ def _getParamsString(params, logParamFrequency=1, logParamCharLimit=80):
 def _getParamString(params, logParamCharLimit=80, index=None):
     paramsStr = []
     for p in params:
-        p = repr(p)
-        if logParamCharLimit > 0 and len(p) > logParamCharLimit:
-            p = (p[:(logParamCharLimit)] + '...')
+        if _isna(p):
+            p = 'NULL'
+        else:
+            p = repr(p)
+            if logParamCharLimit > 0 and len(p) > logParamCharLimit:
+                p = (p[:(logParamCharLimit)] + '...')
         paramsStr.append(p)
     prefix = u"["
     if index is not None:
