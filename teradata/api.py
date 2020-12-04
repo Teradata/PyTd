@@ -42,6 +42,24 @@ class NullHandler(logging.Handler):
 
 logging.getLogger("teradata").addHandler(NullHandler())
 
+class InParam ():
+
+    """Represents an input parameter from a Stored Procedure"""
+
+    def __init__(self, value, dataType=None, size=None):
+        self.inValue = value
+        self.dataType = dataType
+        self.size = size
+        self.escapeParamType = determineEscapeParamType (dataType, value)
+
+    def setValueFunc(self, valueFunc):
+        self.valueFunc = valueFunc
+
+    def value(self):
+        return None if self.valueFunc is None else self.valueFunc()
+
+    def __repr__(self):
+        return "InParam(value={}, dataType={})".format(self.inValue, self.dataType)
 
 class OutParam ():
 
@@ -70,14 +88,44 @@ class InOutParam (OutParam):
     def __init__(self, value, name=None, dataType=None, size=None):
         OutParam.__init__(self, name, dataType, size)
         self.inValue = value
+        self.escapeParamType = determineEscapeParamType (dataType, value)
 
     def __repr__(self):
         return "InOutParam(value={}, name={}, dataType={}, size={})".format(
             self.inValue, self.name, self.dataType, self.size)
 
+def determineEscapeParamType (datatype, value):
+    from .datatypes import Interval, Period
+
+    if datatype is None or value is None:
+        return datatype
+
+    if datatype.endswith ("AS LOCATOR") and isinstance (value, (bytes, bytearray)):
+        return datatype
+
+    if datatype.startswith (("BYTE", "VARBYTE", "LONG VARBYTE")) and isinstance (value, (bytes, bytearray)):
+        return datatype
+
+    if datatype in {"BYTEINT", "BIGINT", "INTEGER", "SMALLINT", "INT"} and isinstance (value, int):
+        return datatype
+
+    if datatype.startswith(("INTERVAL", "PERIOD", "DATE", "VARCHAR", "CHAR", "FLOAT", "NUMBER", "DECIMAL", "XML", "LONG VARCHAR")) and isinstance (value, str):
+        return datatype
+
+    if datatype.startswith ("INTERVAL") and isinstance (value, Interval):
+        return datatype
+
+    if datatype.startswith ("PERIOD") and isinstance (value, Period):
+        return datatype
+
+    if datatype.startswith ("TIME"):
+        return datatype
+
+    return None
+    #end determineEscapeParamType
+
+
 # Define exceptions
-
-
 class Warning(Exception):  # @ReservedAssignment
 
     def __init__(self, msg):
@@ -124,6 +172,7 @@ class InternalError(DatabaseError):
 class ProgrammingError(DatabaseError):
 
     def __init__(self, code, msg):
+        DatabaseError.__init__(self, code, msg)
         self.value = (code, msg)
         self.args = (code, msg)
 
@@ -152,6 +201,7 @@ class NotSupportedError(Error):
 class OperationalError(DatabaseError):
 
     def __init__(self, code, msg):
+        DatabaseError.__init__(self, code, msg)
         self.value = (code, msg)
         self.args = (code, msg)
 

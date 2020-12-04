@@ -28,10 +28,6 @@ import re
 import json
 import logging
 from . import util  # @UnusedImport # noqa
-if sys.version_info[0] == 2:
-    from StringIO import StringIO  # @UnresolvedImport #@UnusedImport
-else:
-    from io import StringIO  # @UnresolvedImport @UnusedImport @Reimport # noqa
 
 logger = logging.getLogger(__name__)
 

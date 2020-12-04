@@ -86,7 +86,7 @@ class UdaExecConfigTest (unittest.TestCase):
         udaExec = teradata.UdaExec(
             configFiles=configFiles, configureLogging=False)
         self.assertEqual(udaExec.resumeFromCheckpoint, checkpoint)
-        with udaExec.connect("ODBC") as session:
+        with udaExec.connect("TERADATASQL") as session:
             self.assertIsNone(session.execute(
                 "SELECT 1").fetchone(),
                 "Query was executed but should have been skipped.")
@@ -105,7 +105,7 @@ class UdaExecConfigTest (unittest.TestCase):
         self.assertEqual(udaExec.resumeFromCheckpoint, checkpoint)
 
     def testVariableResolutionEscapeCharacter(self):
-        with self.udaExec.connect("ODBC") as session:
+        with self.udaExec.connect("TERADATASQL") as session:
             self.assertEqual(
                 session.execute(
                     "SELECT '$${ThisShouldBeTreatedAsALiteral}'").fetchone()[

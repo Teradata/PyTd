@@ -24,8 +24,8 @@ import sys
 from setuptools import setup
 
 # Make sure correct version of python is being used.
-if sys.version_info[0] < 2 or (sys.version_info[0] == 2 and sys.version_info[1] < 7):
-    print("The teradata module does not support this version of Python, the version must be 2.7 or later.")
+if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 4):
+    print("The teradata module does not support this version of Python, the version must be 3.4 or later.")
     sys.exit(1)
     
 with open('teradata/version.py') as f: 

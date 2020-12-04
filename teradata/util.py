@@ -24,7 +24,6 @@
 
 import sys
 import re
-import codecs
 import argparse
 import inspect
 import copy
@@ -34,8 +33,8 @@ from .api import *  # @UnusedWildImport # noqa
 INVALID_ARGUMENT = "INVALID_ARGUMENT"
 
 # Create new trace log level
-TRACE = 5
-logging.addLevelName(TRACE, "TRACE")
+TRACE = 15
+logging.addLevelName(TRACE, 'TRACE')
 
 
 def trace(self, message, *args, **kws):
@@ -45,30 +44,7 @@ def trace(self, message, *args, **kws):
 logging.TRACE = TRACE
 logging.Logger.trace = trace
 
-logger = logging.getLogger(__name__)
-
-if sys.version_info[0] == 2:
-    openfile = codecs.open
-else:
-    openfile = open
-
-
-def isString(value):
-    # Implement python version specific setup.
-    if sys.version_info[0] == 2:
-        return isinstance(value, basestring)  # @UndefinedVariable
-    else:
-        return isinstance(value, str)  # @UndefinedVariable
-
-
-def toUnicode(string):
-    if not isString(string):
-        string = str(string)
-    if sys.version_info[0] == 2:
-        if isinstance(string, str):
-            string = string.decode("utf8")
-    return string
-
+logger = logging.getLogger (__name__)
 
 def raiseIfNone(name, value):
     if not value:
@@ -78,158 +54,15 @@ def raiseIfNone(name, value):
 
 def booleanValue(value):
     retval = value
-    if isString(value):
+    if isinstance (value, str):
         retval = value.lower() in ["1", "on", "true", "yes"]
     return retval
-
-
-class Cursor:
-
-    """An abstract cursor for encapsulating shared functionality of connection
-     specific implementations (e.g. ODBC, REST)"""
-
-    def __init__(self, connection, dbType, dataTypeConverter):
-        self.connection = connection
-        self.converter = dataTypeConverter
-        self.dbType = dbType
-        self.results = None
-        self.arraysize = 1
-        self.fetchSize = None
-        self.rowcount = -1
-        self.description = None
-        self.types = None
-        self.iterator = None
-        self.rownumber = None
-
-    def callproc(self, procname, params):
-        # Abstract method, defined by convention only
-        raise NotImplementedError("Subclass must implement abstract method")
-
-    def close(self):
-        pass
-
-    def execute(self, query, params=None):
-        # Abstract method, defined by convention only
-        raise NotImplementedError("Subclass must implement abstract method")
-
-    def executemany(self, query, params, batch=False):
-        # Abstract method, defined by convention only
-        raise NotImplementedError("Subclass must implement abstract method")
-
-    def fetchone(self):
-        self.fetchSize = 1
-        return next(self, None)
-
-    def fetchmany(self, size=None):
-        if size is None:
-            size = self.arraysize
-        self.fetchSize = size
-        rows = []
-        count = 0
-        for row in self:
-            rows.append(row)
-            count += 1
-            if count == size:
-                break
-        return rows
-
-    def fetchall(self):
-        self.fetchSize = self.arraysize
-        rows = []
-        for row in self:
-            rows.append(row)
-        return rows
-
-    def nextset(self):
-        # Abstract method, defined by convention only
-        raise NotImplementedError("Subclass must implement abstract method")
-
-    def setinputsizes(self, sizes):
-        pass
-
-    def setoutputsize(self, size, column=None):
-        pass
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        self.fetchSize = self.arraysize
-        if self.iterator:
-            if self.rownumber is None:
-                self.rownumber = 0
-            else:
-                self.rownumber += 1
-            values = next(self.iterator)
-            for i in range(0, len(values)):
-                values[i] = self.converter.convertValue(
-                    self.dbType, self.types[i][0], self.types[i][1], values[i])
-            row = Row(self.columns, values, self.rownumber + 1)
-            # logger.debug("%s", row)
-            return row
-        raise StopIteration()
-
-    def next(self):
-        return self.__next__()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, t, value, traceback):
-        self.close()
-
-
-class Row (object):
-
-    """Represents a table row."""
-
-    def __init__(self, columns, values, rowNum):
-        super(Row, self).__setattr__("columns", columns)
-        super(Row, self).__setattr__("values", values)
-        super(Row, self).__setattr__("rowNum", rowNum)
-
-    def __getattr__(self, name):
-        try:
-            index = self.columns[name.lower()]
-            return self.values[index]
-        except KeyError:
-            raise AttributeError("No such attribute: " + name)
-
-    def __setattr__(self, name, value):
-        try:
-            self.values[self.columns[name.lower()]] = value
-        except KeyError:
-            raise AttributeError("No such attribute: " + name)
-
-    def __setitem__(self, key, value):
-        try:
-            self.values[key] = value
-        except TypeError:
-            self.values[self.columns[key.lower()]] = value
-
-    def __getitem__(self, key):
-        try:
-            return self.values[key]
-        except TypeError:
-            index = self.columns[key.lower()]
-            return self.values[index]
-
-    def __len__(self):
-        return len(self.values)
-
-    def __str__(self):
-        return "Row " + str(self.rowNum) + ": [" + \
-            ", ".join(map(str, self.values)) + "]"
-
-    def __iter__(self):
-        return self.values.__iter__()
-
 
 class OutParams (object):
 
     """ Represents a set of Output parameters. """
 
-    def __init__(self, params, dbType, dataTypeConverter, outparams=None):
+    def __init__(self, params, dataTypeConverter, outparams=None):
         names = {}
         copy = []
         for p in params:
@@ -239,10 +72,11 @@ class OutParams (object):
                 else:
                     value = p.value()
                 if p.dataType is not None:
-                    typeCode = dataTypeConverter.convertType(
-                        dbType, p.dataType)
+                    typeCode = dataTypeConverter.convertType(p.dataType)
                     value = dataTypeConverter.convertValue(
-                        dbType, p.dataType, typeCode, value)
+                        p.dataType, typeCode, value)
+                if isinstance (p, OutParam) and value is not None and p.size is not None and isinstance (value, (str, bytes, bytearray)):
+                    value = value [:p.size]
                 copy.append(value)
                 if p.name is not None:
                     names[p.name] = value
@@ -285,7 +119,7 @@ class SqlScript:
 
     def __init__(self, filename, delimiter=";", encoding=None):
         self.delimiter = delimiter
-        with openfile(filename, mode='r', encoding=encoding) as f:
+        with open(filename, mode='r', encoding=encoding) as f:
             self.sql = f.read()
 
     def __iter__(self):
@@ -298,7 +132,7 @@ class BteqScript:
 
     def __init__(self, filename, encoding=None):
         self.file = filename
-        with openfile(self.file, mode='r', encoding=encoding) as f:
+        with open(self.file, mode='r', encoding=encoding) as f:
             self.lines = f.readlines()
 
     def __iter__(self):
@@ -309,7 +143,7 @@ def sqlsplit(sql, delimiter=";"):
     """A generator function for splitting out SQL statements according to the
      specified delimiter. Ignores delimiter when in strings or comments."""
     tokens = re.split("(--|'|\n|" + re.escape(delimiter) + "|\"|/\*|\*/)",
-                      sql if isString(sql) else delimiter.join(sql))
+                      sql if isinstance(sql, str) else delimiter.join(sql))
     statement = []
     inComment = False
     inLineComment = False
@@ -354,7 +188,7 @@ def linesplit(sql, newline="\n"):
     """A generator function for splitting out SQL statements according to the
      specified delimiter. Ignores delimiter when in strings or comments."""
     tokens = re.split("(--|'|" + re.escape(newline) + "|\"|/\*|\*/)",
-                      sql if isString(sql) else newline.join(sql))
+                      sql if isinstance(sql, str) else newline.join(sql))
     statement = []
     inComment = False
     inLineComment = False
@@ -457,7 +291,7 @@ def createTestCasePerDSN(testCase, baseCls, dataSourceNames):
 
 
 def setupTestUser(udaExec, dsn, user=None, passwd=None, perm=100000000):
-    """A utility method for creating a test user to be use by unittests."""
+    """A utility method for creating a test user to be used by unittests."""
     if user is None:
         user = "py%s_%std_%s_test" % (
             sys.version_info[0], sys.version_info[1], getpass.getuser())
@@ -471,12 +305,22 @@ def setupTestUser(udaExec, dsn, user=None, passwd=None, perm=100000000):
             if e.code == 3802:
                 conn.execute(
                     "CREATE USER " + user +
-                    " FROM DBC AS PERM = %s, PASSWORD = %s" % (perm, passwd))
+                    " AS PERM = %s, PASSWORD = %s" % (perm, passwd))
                 conn.execute("GRANT UDTTYPE ON SYSUDTLIB to %s" % user)
                 conn.execute(
                     "GRANT CREATE PROCEDURE ON %s to %s" % (user, user))
     return user
 
+def cleanupTestUser (udaExec, dsn, user=None, passwd=None):
+    """A utility method for dropping a test user used by unittests."""
+    if user is None:
+        user = "py%s_%std_%s_test" % (
+            sys.version_info[0], sys.version_info[1], getpass.getuser())
+    if passwd is None:
+        passwd = user
+    with udaExec.connect(dsn) as conn:
+        conn.execute("DELETE DATABASE " + user)
+        conn.execute("DROP USER " + user)
 
 class CommandLineArgumentParser:
 

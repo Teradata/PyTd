@@ -42,6 +42,10 @@ class UdaExecExecuteTest ():
         cls.username = cls.password = util.setupTestUser(udaExec, cls.dsn)
         cls.failure = False
 
+    @classmethod
+    def tearDownClass(cls):
+        util.cleanupTestUser(udaExec, cls.dsn)
+
     def testCursorBasics(self):
         with udaExec.connect(self.dsn, username=self.username,
                              password=self.password) as conn:
@@ -144,6 +148,40 @@ class UdaExecExecuteTest ():
             row = cursor.execute(
                 "SELECT COUNT(*) FROM testRollbackCommitAnsiMode").fetchone()
             self.assertEqual(row[0], 0)
+
+    def testRollbackCreateAnsiMode(self):
+        with udaExec.connect(self.dsn, username=self.username,
+                             password=self.password, autoCommit="false",
+                             transactionMode='ANSI') as conn:
+            self.assertIsNotNone(conn)
+            cursor = conn.cursor()
+
+            cursor.execute("CREATE TABLE testRollbackCreateAnsiMode (x INT)")
+            # instead of using cursor.rollback, use escape syntax so warnings will
+            # be printed in log file.
+            cursor.execute("{fn teradata_fake_result_sets}{fn teradata_rollback}")
+
+            with self.assertRaises (teradata.DatabaseError) as cm:
+                cursor.execute("INSERT INTO testRollbackCreateAnsiMode VALUES (1)")
+            self.assertEqual (cm.exception.code, 3807)
+        # end testRollbackWarningAnsiMode
+
+    def testRollbackCreateTeraMode(self):
+        with udaExec.connect(self.dsn, username=self.username,
+                             password=self.password, autoCommit="false",
+                             transactionMode='TERA') as conn:
+            self.assertIsNotNone(conn)
+            cursor = conn.cursor()
+
+            cursor.execute("CREATE TABLE testRollbackCreateTeraMode (x INT)")
+            # instead of using cursor.rollback, use escape syntax so warnings will
+            # be printed in log file.
+            cursor.execute("{fn teradata_fake_result_sets}{fn teradata_rollback}")
+
+            with self.assertRaises (teradata.DatabaseError) as cm:
+                cursor.execute("INSERT INTO testRollbackCreateTeraMode VALUES (1)")
+            self.assertEqual (cm.exception.code, 3807)
+        # end testRollbackWarningAnsiMode
 
     def testSqlScriptExecution(self):
         with udaExec.connect(self.dsn, username=self.username,
@@ -292,48 +330,49 @@ class UdaExecExecuteTest ():
             self.assertIsNone(cursor.fetchone())
 
     def testProcedureInOutParamNull(self):
-        if self.dsn == "ODBC":
-            with udaExec.connect("ODBC", username=self.username,
-                                 password=self.password) as conn:
-                self.assertIsNotNone(conn)
-                for r in conn.execute(
-                    """REPLACE PROCEDURE testProcedure1
-                        (IN p1 INTEGER,  INOUT p2 INTEGER,
-                            INOUT p3 VARCHAR(200), INOUT p4 FLOAT,
-                            INOUT p5 VARBYTE(128))
-                        BEGIN
-                            IF p2 IS NULL THEN
-                                SET p2 = p1;
-                            END IF;
-                            IF p3 IS NULL THEN
-                                SET p3 = 'PASS';
-                            END IF;
-                            IF p4 IS NULL THEN
-                                SET p4 = p1;
-                            END IF;
-                            IF p5 IS NULL THEN
-                                SET p5 = 'AABBCCDDEEFF'XBV;
-                            END IF;
-                        END;"""):
-                    logger.info(r)
-            with udaExec.connect(self.dsn, username=self.username,
-                                 password=self.password) as conn:
-                for i in range(0, 10):
-                    result = conn.callproc(
-                        "testProcedure1",
-                        (i, teradata.InOutParam(None, "p2",
-                                                dataType='INTEGER'),
-                         teradata.InOutParam(None, "p3", size=200),
-                         teradata.InOutParam(None, "p4"),
-                         teradata.InOutParam(None, "p5")))
-                    self.assertEqual(result["p2"], i)
-                    self.assertEqual(result["p3"], "PASS")
-                    self.assertEqual(result["p4"], i)
+        with udaExec.connect(self.dsn, username=self.username,
+                                password=self.password) as conn:
+            self.assertIsNotNone(conn)
+            for r in conn.execute(
+                """REPLACE PROCEDURE testProcedureIONull
+                    (IN p1 INTEGER,  INOUT p2 INTEGER,
+                        INOUT p3 VARCHAR(200), INOUT p4 FLOAT,
+                        INOUT p5 VARBYTE(128))
+                    BEGIN
+                        IF p2 IS NULL THEN
+                            SET p2 = p1;
+                        END IF;
+                        IF p3 IS NULL THEN
+                            SET p3 = 'PASSING TEST';
+                        END IF;
+                        IF p4 IS NULL THEN
+                            SET p4 = p1;
+                        END IF;
+                        IF p5 IS NULL THEN
+                            SET p5 = 'AABBCCDDEEFFAABBCCDDEEFF'XBV;
+                        END IF;
+                    END;"""):
+                logger.info(r)
+
+        sP3Value = 'PASSING TEST'
+        byP5Value = bytearray ([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF])
+        with udaExec.connect(self.dsn, username=self.username,
+                                password=self.password) as conn:
+            for i in range(0, 10):
+                result = conn.callproc(
+                    "testProcedureIONull",
+                    (i,
+                        teradata.InOutParam(None, "p2", dataType='INTEGER'),
+                        teradata.InOutParam(None, "p3", dataType='VARCHAR(200)', size = i + 1),
+                        teradata.InOutParam(None, "p4", dataType='FLOAT'),
+                        teradata.InOutParam(None, "p5", dataType='VARBYTE(50)', size = 14 - i)))
+                self.assertEqual(result["p2"], i)
+                self.assertEqual(result["p3"], sP3Value [:i + 1])
+                self.assertEqual(result["p4"], i)
+                self.assertEqual(result["p5"], byP5Value [:14 - i])
 
     def testProcedure(self):
-        # REST-307 - Unable to create Stored Procedure using REST, always use
-        # ODBC.
-        with udaExec.connect("ODBC", username=self.username,
+        with udaExec.connect(self.dsn, username=self.username,
                              password=self.password) as conn:
             self.assertIsNotNone(conn)
             for r in conn.execute(
@@ -356,18 +395,14 @@ class UdaExecExecuteTest ():
                     "testProcedure1",
                     (i, teradata.OutParam("p2", dataType="INTEGER")))
                 self.assertEqual(result["p2"], i)
-            # Does not work with REST due to REST-308
-            if self.dsn == "ODBC":
-                for i in range(0, 10):
-                    result = conn.callproc(
-                        "testProcedure2",
-                        (teradata.InOutParam(i, "p1", dataType="INTEGER"), ))
-                    self.assertEqual(result["p1"], i * i)
+            for i in range(0, 10):
+                result = conn.callproc(
+                    "testProcedure2",
+                    (teradata.InOutParam(i, "p1", dataType="INTEGER"), ))
+                self.assertEqual(result["p1"], i * i)
 
     def testProcedureWithLargeLobInput(self):
-        # REST-307 - Unable to create Stored Procedure using REST, always use
-        # ODBC.
-        with udaExec.connect("ODBC", username=self.username,
+        with udaExec.connect(self.dsn, username=self.username,
                              password=self.password) as conn:
             self.assertIsNotNone(conn)
             scriptFile = os.path.join(
@@ -376,7 +411,6 @@ class UdaExecExecuteTest ():
 
             SQLText = "CDR_2011-07-25_090000.000000.txt\n"
             SQLText = SQLText * 5000
-            print("LENGTH OF SQLTest: {}".format(len(SQLText)))
 
             conn.callproc('GCFR_BB_ExecutionLog_Set',
                           ('TestProc', 127, 12, 96, 2, 2, 'MyText',
@@ -389,69 +423,130 @@ class UdaExecExecuteTest ():
             self.assertEqual(count, 1)
 
     def testProcedureWithBinaryAndFloatParameters(self):
-        if self.dsn == "ODBC":
-            with udaExec.connect(self.dsn, username=self.username,
-                                 password=self.password) as conn:
-                self.assertIsNotNone(conn)
-                for r in conn.execute(
-                    """REPLACE PROCEDURE testProcedure1
-                        (INOUT p1 VARBYTE(128),  OUT p2 VARBYTE(128),
-                        INOUT p3 FLOAT, OUT p4 FLOAT, OUT p5 TIMESTAMP)
-                        BEGIN
-                            SET p2 = p1;
-                            SET p4 = p3;
-                            SET p5 = CURRENT_TIMESTAMP;
-                        END;"""):
-                    logger.info(r)
-                result = conn.callproc(
-                    "testProcedure1",
-                    (teradata.InOutParam(bytearray([0xFF]), "p1"),
-                     teradata.OutParam("p2"),
-                     teradata.InOutParam(float("inf"), "p3"),
-                     teradata.OutParam("p4", dataType="FLOAT"),
-                     teradata.OutParam("p5", dataType="TIMESTAMP")))
-                self.assertEqual(result.p1, bytearray([0xFF]))
-                self.assertEqual(result.p2, result.p1)
-                self.assertEqual(result.p3, float('inf'))
-                self.assertEqual(result.p4, result.p3)
+        with udaExec.connect(self.dsn, username=self.username,
+                                password=self.password) as conn:
+            self.assertIsNotNone(conn)
+            for r in conn.execute(
+                """REPLACE PROCEDURE testProcedureBF
+                    (INOUT p1 VARBYTE(128),  OUT p2 VARBYTE(128),
+                    INOUT p3 FLOAT, OUT p4 FLOAT, OUT p5 TIMESTAMP,
+                    INOUT p6 VARCHAR(10), OUT p7 VARCHAR (10))
+                    BEGIN
+                        SET p2 = p1;
+                        SET p4 = p3;
+                        SET p5 = CURRENT_TIMESTAMP;
+                        SET p7 = p6;
+                    END;"""):
+                logger.info(r)
+            result = conn.callproc(
+                "testProcedureBF",
+                (teradata.InOutParam(bytearray([0xFF, 0xFE, 0xFF]), "p1", size=2),
+                    teradata.OutParam("p2", size=1),
+                    teradata.InOutParam(float("inf"), "p3"),
+                    teradata.OutParam("p4", dataType="FLOAT"),
+                    teradata.OutParam("p5", dataType="TIMESTAMP"),
+                    teradata.InOutParam("abcdefghij", "p6", size = 40),
+                    teradata.OutParam ("p7", size = 4)))
+            self.assertEqual(result.p1, bytearray([0xFF, 0xFE]))
+            self.assertEqual(result.p2, result.p1[:1])
+            self.assertEqual(result.p3, float('inf'))
+            self.assertEqual(result.p4, result.p3)
+            self.assertEqual(result.p6, "abcdefghij")
+            self.assertEqual(result.p7,result.p6[:4])
 
     def testProcedureWithResultSet(self):
-        if self.dsn == "ODBC":
-            with udaExec.connect(self.dsn, username=self.username,
-                                 password=self.password) as conn:
-                self.assertIsNotNone(conn)
-                for r in conn.execute(
-                    """REPLACE PROCEDURE testProcedureWithResultSet()
-DYNAMIC RESULT SETS 1
-BEGIN
-    DECLARE QUERY1 VARCHAR(22000);
-    DECLARE dyna_set1 CURSOR WITH RETURN TO CALLER FOR STMT1;
-    SET QUERY1 = 'select * from dbc.dbcinfo';
-     PREPARE STMT1 FROM QUERY1;
-     OPEN dyna_set1;
-     DEALLOCATE PREPARE STMT1;
-END;"""):
-                    logger.info(r)
-                with conn.cursor() as cursor:
-                    cursor.callproc("testProcedureWithResultSet", ())
-                    self.assertEqual(len(cursor.fetchall()), 3)
+        with udaExec.connect(self.dsn, username=self.username,
+                                password=self.password) as conn:
+            self.assertIsNotNone(conn)
+            for r in conn.execute(
+                """REPLACE PROCEDURE testProcedureWithResultSet()
+                    DYNAMIC RESULT SETS 1
+                    BEGIN
+                        DECLARE QUERY1 VARCHAR(22000);
+                        DECLARE dyna_set1 CURSOR WITH RETURN TO CALLER FOR STMT1;
+                        SET QUERY1 = 'select * from dbc.dbcinfo';
+                        PREPARE STMT1 FROM QUERY1;
+                        OPEN dyna_set1;
+                        DEALLOCATE PREPARE STMT1;
+                    END;"""):
+                logger.info(r)
+            with conn.cursor() as cursor:
+                cursor.callproc("testProcedureWithResultSet", ())
+                self.assertTrue ("cursor.nextset failed to retrieve dynamic result set", cursor.nextset ())
+                self.assertEqual(len(cursor.fetchall()), 3)
 
-    def testQueryTimeout(self):
-        with self.assertRaises(teradata.DatabaseError) as cm:
-            with udaExec.connect(self.dsn,  username=self.username,
-                                 password=self.password) as conn:
-                conn.execute(
-                    "CREATE TABLE testQueryTimeout (id INT, "
-                    "name VARCHAR(128), dob TIMESTAMP)")
-                conn.executemany(
-                    "INSERT INTO testQueryTimeout VALUES (?, ?, "
-                    "CURRENT_TIMESTAMP)",
-                    [(x, str(x)) for x in range(0, 10000)],
-                    batch=True)
-                conn.execute(
-                    "SELECT * FROM testQueryTimeout t1, testQueryTimeout t2",
-                    queryTimeout=1)
-        self.assertIn("timeout", cm.exception.msg)
+    def testProcedureWithParamsAndResultSet(self):
+        with udaExec.connect(self.dsn, username=self.username,
+                                password=self.password) as conn:
+            self.assertIsNotNone(conn)
+            for r in conn.execute(
+                """REPLACE PROCEDURE testProcedureWithParamsAndResultSet
+                    (IN p1 VARBYTE (128), INOUT p2 VARBYTE(128), OUT p3 VARBYTE(128),
+                     IN p4 VARCHAR (100) , INOUT p5 VARCHAR(100) , OUT p6 VARCHAR (100))
+                    DYNAMIC RESULT SETS 2
+                    BEGIN
+                        declare cur1 cursor with return for select :p1 as c1, bytes (:p1) as c2     , :p2 as c3, bytes (:p2) as c4 ;
+                        declare cur2 cursor with return for select :p4 as c1, characters (:p4) as c2, :p5 as c3, characters (:p5) as c4 ;
+                        open cur1 ;
+                        open cur2 ;
+
+                        SET p3 = p2;
+                        SET p2 = p1;
+                        SET p6 = p5;
+                        SET p5 = p4;
+                    END;"""):
+                logger.info(r)
+            with conn.cursor() as cursor:
+                result = cursor.callproc("testProcedureWithParamsAndResultSet",
+                    (teradata.InParam   (bytearray ([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF])),
+                    teradata.InOutParam (bytearray ([0xFF, 0xFE, 0xFF, 0xEE]), "p2", dataType = 'VARBYTE(20)', size=9),
+                    teradata.OutParam   ("p3", size=3),
+                    teradata.InParam    ("abcdefghijklmnop"),
+                    teradata.InOutParam ("123456789012345678901", "p5", dataType = 'VARCHAR(128)', size = 15),
+                    teradata.OutParam   ("p6", size = 4)))
+                self.assertEqual(result.p2, bytearray ([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0xAA, 0xBB, 0xCC]))
+                self.assertEqual(result.p3, bytearray ([0xFF, 0xFE, 0xFF]))
+                self.assertEqual(result.p5, "abcdefghijklmno")
+                self.assertEqual(result.p6, "1234")
+
+                self.assertTrue ("cursor.nextset failed to retrieve dynamic result set one", cursor.nextset ())
+                compareLists (self, cursor.description, [
+                    ['c1', bytearray      , None, 128,    0, None, False],
+                    ['c2', decimal.Decimal, None,   4,   10, None, False],
+                    ['c3', bytearray      , None, 128,    0, None, False],
+                    ['c4', decimal.Decimal, None,   4,   10, None, False]
+                ])
+                compareLists (self, cursor.types, [
+                    ['VARBYTE', bytearray],
+                    ['INTEGER', decimal.Decimal],
+                    ['VARBYTE', bytearray],
+                    ['INTEGER', decimal.Decimal]
+                ])
+                for row in cursor.fetchall () :
+                    self.assertEqual(row [0], bytearray ([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]))
+                    self.assertEqual(row [1], len (row [0]))
+                    self.assertEqual(row [2], bytearray ([0xFF, 0xFE, 0xFF, 0xEE]))
+                    self.assertEqual(row [3], len (row [2]))
+
+                self.assertTrue ("cursor.nextset failed to retrieve dynamic result set two", cursor.nextset ())
+                compareLists (self, cursor.description, [
+                    ['c1', str            , None, 200,  0, None, False],
+                    ['c2', decimal.Decimal, None,   4, 10, None, False],
+                    ['c3', str            , None, 200,  0, None, False],
+                    ['c4', decimal.Decimal, None,   4, 10, None, False]
+                ])
+                compareLists (self, cursor.types, [
+                    ['VARCHAR', str],
+                    ['INTEGER', decimal.Decimal],
+                    ['VARCHAR', str],
+                    ['INTEGER', decimal.Decimal]
+                ])
+                for row in cursor.fetchall () :
+                    self.assertEqual(row [0], "abcdefghijklmnop")
+                    self.assertEqual(row [1], len (row [0]))
+                    self.assertEqual(row [2], "123456789012345678901")
+                    self.assertEqual(row [3], len (row [2]))
+        # end testProcedureWithParamsAndResultSet
 
     def testNewlinesInQuery(self):
         with udaExec.connect(self.dsn,  username=self.username,
@@ -556,27 +651,6 @@ END;"""):
         if self.failure:
             raise self.failure
 
-    def testAutoGeneratedKeys(self):
-        # Auto-generated keys are not supported by REST.
-        if self.dsn == "ODBC":
-            rowCount = 1
-            with udaExec.connect(self.dsn,  username=self.username,
-                                 password=self.password,
-                                 ReturnGeneratedKeys="C") as conn:
-                conn.execute(
-                    "CREATE TABLE testAutoGeneratedKeys (id INTEGER "
-                    "GENERATED BY DEFAULT AS IDENTITY, name VARCHAR(128))")
-                count = 0
-                for row in conn.executemany(
-                        "INSERT INTO testAutoGeneratedKeys VALUES (NULL, ?)",
-                        [(str(x), ) for x in range(0, rowCount)]):
-                    count += 1
-                    print(row)
-                    self.assertEqual(row[0], count)
-                # Potential ODBC bug is preventing this test case from
-                # passing, e-mail sent to ODBC support team.
-                # self.assertEqual(count, rowCount)
-
     def testEmptyResultSet(self):
         with udaExec.connect(self.dsn,  username=self.username,
                              password=self.password) as conn:
@@ -587,7 +661,6 @@ END;"""):
             with conn.cursor() as cursor:
                 for row in cursor.execute("SELECT * FROM testEmptyResultSet"):
                     count += 1
-                    print(row)
                 self.assertEqual(count, 0)
 
     def testFetchArraySize1000(self):
@@ -637,7 +710,7 @@ END;"""):
     def testDollarSignInPassword(self):
         with udaExec.connect(self.dsn) as session:
             session.execute("DROP USER testDollarSignInPassword",
-                            ignoreErrors=[3802])
+                            ignoreErrors=[3802, 3524])
         util.setupTestUser(udaExec, self.dsn, user='testDollarSignInPassword',
                            passwd='pa$$$$word')
         with udaExec.connect(self.dsn, username='testDollarSignInPassword',
@@ -645,16 +718,15 @@ END;"""):
             session.execute("SELECT * FROM DBC.DBCINFO")
 
     def testOperationsOnClosedCursor(self):
-        if self.dsn == "ODBC":
-            with udaExec.connect(self.dsn) as session:
-                cursor = session.cursor()
-                cursor.close()
-                error = None
-                try:
-                    cursor.execute("SELECT * FROM DBC.DBCINFO")
-                except teradata.InterfaceError as e:
-                    error = e
-                self.assertIsNotNone(error)
+        with udaExec.connect(self.dsn) as session:
+            cursor = session.cursor()
+            cursor.close()
+            error = None
+            try:
+                cursor.execute("SELECT * FROM DBC.DBCINFO")
+            except teradata.ProgrammingError as e:
+                error = e
+            self.assertIsNotNone(error)
 
     def testIgnoreError(self):
         with udaExec.connect(self.dsn) as session:
@@ -707,11 +779,15 @@ def cursorAndExecuteSelect(testCase, session, threadId):
     except Exception as e:
         testCase.failure = e
 
+def compareLists (test, aaoList1, aaoList2):
+    nRowIndex = 0
+    for aoList in aaoList1:
+        for nCol in range (len (aoList)):
+            test.assertEqual (aoList [nCol], aaoList2 [nRowIndex][nCol])
+        nRowIndex += 1
 
-# The unit tests in the UdaExecExecuteTest are execute once for each named
-# data source below.
 util.createTestCasePerDSN(
-    UdaExecExecuteTest, unittest.TestCase,  ("HTTP", "HTTPS", "ODBC"))
+    UdaExecExecuteTest, unittest.TestCase,  ("TERADATASQL",))
 
 if __name__ == '__main__':
     formatter = logging.Formatter(
@@ -727,13 +803,11 @@ configFiles = [os.path.join(os.path.dirname(__file__), 'udaexec.ini')]
 udaExec = teradata.UdaExec(configFiles=configFiles, configureLogging=False)
 udaExec.checkpoint()
 
-
 def runTest(testName):
     suite = unittest.TestSuite()
-    suite.addTest(UdaExecExecuteTest_ODBC(testName))  # @UndefinedVariable # noqa
-    suite.addTest(UdaExecExecuteTest_HTTP(testName))  # @UndefinedVariable # noqa
+    suite.addTest(UdaExecExecuteTest_TERADATASQL(testName))  # @UndefinedVariable # noqa
     unittest.TextTestRunner().run(suite)
+    unittest.addCleanup (util.cleanupTestUser(udaExec, 'TERADATASQL'))
 
 if __name__ == '__main__':
-    # runTest('testMultipleResultSets')
     unittest.main()
