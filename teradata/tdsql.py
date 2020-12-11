@@ -277,15 +277,15 @@ class TeradataSqlCursor:
     def _setQueryTimeout(self, queryTimeout):
         pass
 
-    def execute(self, query, params=None, queryTimeout=0):
+    def execute(self, query, params=None, ignoreErrors = None, queryTimeout=0):
         logger.trace ('> enter execute {}'.format (self))
         try:
-            return self.executemany (query, params, queryTimeout)
+            return self.executemany (query, params, ignoreErrors, queryTimeout)
         finally:
             logger.trace ('> leave execute {}'.format (self))
         # end execute
 
-    def executemany (self, query, params, batch=False, ignoreErrors = None, queryTimeout=0):
+    def executemany (self, query, params, ignoreErrors = None, queryTimeout=0, batch=True):
         logger.trace ('> enter executemany {} : {}'.format (self, query))
         try:
             self._setQueryTimeout(queryTimeout)
@@ -473,8 +473,6 @@ class TeradataSqlCursor:
                     values[i] = self.converter.convertValue(
                         self.types[i][0], self.types[i][1], values[i])
                 row = Row(self.columns, values, self.rownumber + 1)
-                if logger.isEnabledFor (logging.DEBUG):
-                    [ logger.debug (" Column {} {:15} = {}".format (i + 1, self.cur.description [i][0], row [i])) for i in range (0, len (row)) ]
 
                 return row
             raise StopIteration()

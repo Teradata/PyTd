@@ -291,6 +291,8 @@ class DefaultDataTypeConverter (DataTypeConverter):
             elif typeCode == Date:
                 if isinstance(value, str):
                     return convertDate(value)
+                elif isinstance (value, datetime.date):
+                    return (value)
                 elif type (value) is int:
                     return datetime.datetime.fromtimestamp(
                         value // SECS_IN_MILLISECS).replace(
