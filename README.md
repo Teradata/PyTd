@@ -47,16 +47,16 @@ For Teradata customer support, please visit [Teradata Access](https://access.ter
   + [3.6 Unicode](#Unicode)
   + [3.7 Ignoring Errors](#IgnoringErrors)
   + [3.8 Password Protection](#PasswordProtection)
-  + [3.9 External SQL Scripts](#ExternalConfiguraton)
+  + [3.9 External SQL Scripts](#ExternalScripts)
 * [4.0 Reference](#References)
-  + [4.1 UdaExec Parameters](#UdaExec%20Parameters)
+  + [4.1 UdaExec Parameters](#UdaExecParameters)
   + [4.2 Connect Parameters](#ConnectParametrs)
   + [4.3 Execute Parameters](#ExecuteParameters)
 * [5.0 Running Unit Tests](#RunningTests)
 * [6.0 Migration Guide](#Migration)
   + [6.1 Setup](#MGSetup)
   + [6.2 Database Interactions](#MGDatabase)
-  + [6.3 Reference](#MGReferences)
+  + [6.3 Reference](#MGReference)
 
 Table of Contents links do not work on PyPI due to a [PyPI limitation](https://github.com/pypa/warehouse/issues/4064).
 
@@ -392,9 +392,10 @@ environments. The same script can be executed against a Dev, Test, and
 Prod environment with no changes, making it easier to adopt and automate
 a DevOps workflow.
 
-<a name="Checkpoints"></a>
+<a name="Logging"></a>
 
 #### **2.2 Logging**
+
 ---
 The UdaExec object automatically enables logging when it is initialized.
 Logging is implemented using Python's standard logging module. If you
@@ -892,7 +893,7 @@ statements.
 This section defines the full set of method parameters supported by the
 API.
 
-<a name="UdaExec%20%Parameters"></a>
+<a name="UdaExecParameters"></a>
 
 #### **4.1 UdaExec Parameters**
 ---
