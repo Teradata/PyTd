@@ -44,8 +44,12 @@ hourToMinuteIntervalRegEx = re.compile("^(-?)(\d+):(\d+)$")
 hourToSecondIntervalRegEx = re.compile("^(-?)(\d+):(\d+):(\d+\.?\d*)$")
 minuteToSecondIntervalRegEx = re.compile("^(-?)(\d+):(\d+\.?\d*)$")
 secondIntervalRegEx = re.compile("^(-?)(\d+\.?\d*)$")
-periodRegEx1 = re.compile("\('(.*)',\s*'(.*)'\)")
-periodRegEx2 = re.compile("ResultStruct:PERIOD\(.*\)\[(.*),\s*(.*)\]")
+periodRegEx = re.compile("(.*),\s*(.*)")
+
+T_BLOB_AS_LOCATOR = 408
+T_CLOB_AS_LOCATOR = 424
+T_JSON_AS_LOCATOR = 884
+T_XML_AS_LOCATOR  = 860
 
 NUMBER_TYPES = {"BYTEINT", "BIGINT", "DECIMAL", "DOUBLE", "DOUBLE PRECISION",
                 "INTEGER", "NUMBER", "SMALLINT", "FLOAT", "INT", "NUMERIC",
@@ -55,8 +59,14 @@ INT_TYPES = {"BYTEINT", "BIGINT", "INTEGER", "SMALLINT", "INT"}
 
 FLOAT_TYPES = {"FLOAT", "DOUBLE", "DOUBLE PRECISION", "REAL"}
 
-BINARY_TYPES = {"BLOB", "BYTE", "VARBYTE"}
+BINARY_TYPES = {"BLOB", "BYTE", "VARBYTE", "LONG VARBYTE"}
 
+LOB_LOCATOR_TYPES = {
+    T_BLOB_AS_LOCATOR : "BLOB AS LOCATOR",
+    T_CLOB_AS_LOCATOR : "CLOB AS LOCATOR",
+    T_JSON_AS_LOCATOR : "JSON AS LOCATOR",
+    T_XML_AS_LOCATOR  : "XML AS LOCATOR"
+}
 
 def _getMs(m, num):
     ms = m.group(num)
@@ -134,6 +144,7 @@ def _convertInterval(dataType, value, regEx, *args):
 
 def convertInterval(dataType, value):
     value = value.strip()
+    dataType = re.sub (" ?\(([0-9, ]+)\)", "", dataType)
     if dataType == "INTERVAL YEAR":
         return _convertScalarInterval(dataType, value, "years")
     elif dataType == "INTERVAL YEAR TO MONTH":
@@ -172,9 +183,7 @@ def convertInterval(dataType, value):
 
 
 def convertPeriod(dataType, value):
-    m = periodRegEx1.match(value)
-    if not m:
-        m = periodRegEx2.match(value)
+    m = periodRegEx.match(value)
     if m:
         if "TIMESTAMP" in dataType:
             start = convertTimestamp(m.group(1))
@@ -187,13 +196,38 @@ def convertPeriod(dataType, value):
             end = convertDate(m.group(2))
         else:
             raise InterfaceError("INVALID_PERIOD",
-                                 "Unknown PERIOD data type: {}".format(
+                                 "Unknown PERIOD data type: {} {}".format(
                                      dataType, value))
     else:
         raise InterfaceError(
             "INVALID_PERIOD", "{} format invalid: {}".format(dataType, value))
     return Period(start, end)
+    #end convertPeriod
 
+def removeTrailingZerosFromPeriod (value):
+    if value is None:
+        return value
+    m = re.compile("\('(.*)',\s*'(.*)'\)").match(str(value))
+    if m is not None and len (m.groups()) == 2:
+        value = "{},{}".format (removeTrailingZeros (m.group (1)), removeTrailingZeros (m.group (2)))
+    return value
+    #end convertInParamPeriod
+
+def removeTrailingZerosFromTimeAndTimestamp (value):
+    if value is None:
+        return value
+    return removeTrailingZeros (str(value))
+
+def removeTrailingZeros (value):
+    seconds = re.compile(".*(\.[0-9]*).*").match (str(value))
+
+    if seconds is not None:
+        sSecond = seconds.group (1).rstrip ('0')
+        sSecond = "" if len (sSecond) == 1 else sSecond
+        value = re.sub ('\.[0-9]*', sSecond, str(value))
+
+    return value
+    #end removeTrailingZeros
 
 def zeroIfNone(value):
     if value is None:
@@ -205,13 +239,13 @@ class DataTypeConverter:
 
     """Handles conversion of result set data types into python objects."""
 
-    def convertValue(self, dbType, dataType, typeCode, value):
+    def convertValue(self, dataType, typeCode, value):
         """Converts the value returned by the database into the desired
          python object."""
         raise NotImplementedError(
             "convertValue must be implemented by sub-class")
 
-    def convertType(self, dbType, dataType):
+    def convertType(self, dataType):
         """Converts the data type to a python type code."""
         raise NotImplementedError(
             "convertType must be implemented by sub-class")
@@ -224,62 +258,59 @@ class DefaultDataTypeConverter (DataTypeConverter):
     def __init__(self, useFloat=False):
         self.useFloat = useFloat
 
-    def convertValue(self, dbType, dataType, typeCode, value):
+    def convertValue(self, dataType, typeCode, value):
         """Converts the value returned by the database into the desired
          python object."""
         logger.trace(
             "Converting \"%s\" to (%s, %s).", value, dataType, typeCode)
         if value is not None:
             if typeCode == NUMBER:
-                try:
-                    return NUMBER(value)
-                except:
-                    # Handle infinity and NaN for older ODBC drivers.
-                    if value == "1.#INF":
-                        return NUMBER('Infinity')
-                    elif value == "-1.#INF":
-                        return NUMBER('-Infinity')
-                    else:
-                        return NUMBER('NaN')
+                return NUMBER(value)
             elif typeCode == float:
-                return value if not util.isString else float(value)
+                return value if not isinstance(value, str) else float(value)
             elif typeCode == Timestamp:
-                if util.isString(value):
+                if isinstance(value, str):
                     return convertTimestamp(value)
+                elif isinstance (value, datetime.date):
+                    return (value)
                 else:
                     return datetime.datetime.fromtimestamp(
                         value // SECS_IN_MILLISECS).replace(
                         microsecond=value % SECS_IN_MILLISECS *
                         MILLISECS_IN_MICROSECS)
             elif typeCode == Time:
-                if util.isString(value):
+                if isinstance(value, str):
                     return convertTime(value)
+                elif isinstance (value, datetime.time):
+                    return (value)
                 else:
                     return datetime.datetime.fromtimestamp(
                         value // SECS_IN_MILLISECS).replace(
                         microsecond=value % SECS_IN_MILLISECS *
                         MILLISECS_IN_MICROSECS).time()
             elif typeCode == Date:
-                if util.isString(value):
+                if isinstance(value, str):
                     return convertDate(value)
-                else:
+                elif isinstance (value, datetime.date):
+                    return (value)
+                elif type (value) is int:
                     return datetime.datetime.fromtimestamp(
                         value // SECS_IN_MILLISECS).replace(
                         microsecond=value % SECS_IN_MILLISECS *
                         MILLISECS_IN_MICROSECS).date()
             elif typeCode == BINARY:
-                if util.isString(value):
+                if isinstance(value, str):
                     return bytearray.fromhex(value)
             elif dataType.startswith("INTERVAL"):
                 return convertInterval(dataType, value)
-            elif dataType.startswith("JSON") and util.isString(value):
+            elif dataType.startswith("JSON") and isinstance(value, str):
                 return json.loads(value, parse_int=decimal.Decimal,
                                   parse_float=decimal.Decimal)
             elif dataType.startswith("PERIOD"):
                 return convertPeriod(dataType, value)
         return value
 
-    def convertType(self, dbType, dataType):
+    def convertType(self, dataType):
         """Converts the data type to a python type code."""
         typeCode = STRING
         if dataType in NUMBER_TYPES:
@@ -414,6 +445,8 @@ class Interval:
         _appendInterval(s, self.seconds, separator=":")
         if self.negative:
             s.insert(0, "-")
+        else:
+            s.insert(0, " ")
         return "".join(s)
 
     def __repr__(self):
@@ -436,6 +469,7 @@ class Period:
     def __init__(self, start, end):
         self.start = start
         self.end = end
+        s = "('" + str(start) + "', '" + str(end) + "')"
 
     def __str__(self):
         return "('" + str(self.start) + "', '" + str(self.end) + "')"

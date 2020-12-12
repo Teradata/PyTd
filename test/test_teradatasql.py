@@ -22,47 +22,51 @@
 import unittest
 import os
 import teradata
-from teradata import tdodbc, util
+from teradata import tdsql, util
 
 
-class TdOdbcTest (unittest.TestCase):
+class TdSqlTest (unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         cls.username = cls.password = util.setupTestUser(udaExec, dsn)
 
+    @classmethod
+    def tearDownClass(cls):
+        util.cleanupTestUser(udaExec, dsn)
+
     def testGlobals(self):
-        self.assertEqual(tdodbc.apilevel, "2.0")
-        self.assertEqual(tdodbc.threadsafety, 1)
-        self.assertEqual(tdodbc.paramstyle, "qmark")
+        self.assertEqual(tdsql.apilevel, "2.0")
+        self.assertEqual(tdsql.threadsafety, 1)
+        self.assertEqual(tdsql.paramstyle, "qmark")
 
     def testSystemNotFound(self):
-        with self.assertRaises(tdodbc.DatabaseError) as cm:
-            tdodbc.connect(system="continuum.td.teradata.com",
+        with self.assertRaises(tdsql.OperationalError) as cm:
+            tdsql.connect(system="hostNotFound.td.teradata.com",
                            username=self.username, password=self.password)
-        self.assertTrue("08004" in cm.exception.msg, cm.exception)
+        self.assertTrue("Hostname lookup failed" in str(cm.exception), cm.exception)
 
     def testBadCredentials(self):
-        with self.assertRaises(tdodbc.DatabaseError) as cm:
-            tdodbc.connect(system=system, username="bad", password="bad")
+        with self.assertRaises(tdsql.DatabaseError) as cm:
+            tdsql.connect(system=system, username="bad", password="bad")
         self.assertEqual(cm.exception.code, 8017, cm.exception.msg)
 
-    def testConnect(self):
-        conn = tdodbc.connect(
-            system=system, username=self.username, password=self.password)
-        self.assertIsNotNone(conn)
-        conn.close()
+        with self.assertRaises(tdsql.InterfaceError) as cm:
+            tdsql.connect(system=system,
+                           username=self.username, password=self.password, charset="UTF16")
+        self.assertTrue("Connection charset" in str(cm.exception), cm.exception)
 
-    def testConnectBadDriver(self):
-        with self.assertRaises(tdodbc.InterfaceError) as cm:
-            tdodbc.connect(
-                system=system, username=self.username,
-                password=self.password,
-                driver="BadDriver")
-        self.assertEqual(cm.exception.code, "DRIVER_NOT_FOUND")
+    def testConnect(self):
+        conn1 = tdsql.connect(
+            system=system, username=self.username, password=self.password)
+        self.assertIsNotNone(conn1)
+        conn2 = tdsql.connect(
+            system=system, username=self.username, password=self.password)
+        self.assertIsNotNone(conn2)
+        tdsql.cleanupConnections ()
 
     def testCursorBasics(self):
-        with tdodbc.connect(system=system, username=self.username,
+        with tdsql.connect(system=system, username=self.username,
                             password=self.password, autoCommit=True) as conn:
             self.assertIsNotNone(conn)
             with conn.cursor() as cursor:
@@ -97,14 +101,14 @@ class TdOdbcTest (unittest.TestCase):
                     count += 1
 
                 self.assertEqual(cursor.description[0][0], "InfoKey")
-                self.assertEqual(cursor.description[0][1], tdodbc.STRING)
+                self.assertEqual(cursor.description[0][1], tdsql.STRING)
                 self.assertEqual(cursor.description[1][0], "InfoData")
-                self.assertEqual(cursor.description[1][1], tdodbc.STRING)
+                self.assertEqual(cursor.description[1][1], tdsql.STRING)
                 self.assertEqual(count, 3)
 
     def testExecuteWithParamsMismatch(self):
-        with self.assertRaises(teradata.InterfaceError) as cm:
-            with tdodbc.connect(system=system, username=self.username,
+        with self.assertRaises(teradata.DatabaseError) as cm:
+            with tdsql.connect(system=system, username=self.username,
                                 password=self.password,
                                 autoCommit=True) as conn:
                 self.assertIsNotNone(conn)
@@ -116,15 +120,13 @@ class TdOdbcTest (unittest.TestCase):
                         "INSERT INTO testExecuteWithParamsMismatch "
                         "VALUES (?, ?, ?)", (1, "TEST", ))
         self.assertEqual(
-            cm.exception.code, "PARAMS_MISMATCH", cm.exception.msg)
+            cm.exception.code, 3939, cm.exception.msg)
 
 configFiles = [os.path.join(os.path.dirname(__file__), 'udaexec.ini')]
 udaExec = teradata.UdaExec(configFiles=configFiles, configureLogging=False)
-dsn = 'ODBC'
-odbcConfig = udaExec.config.section(dsn)
-system = odbcConfig['system']
-super_username = odbcConfig['username']
-super_password = odbcConfig['password']
+dsn = 'TERADATASQL'
+tdsqlConfig = udaExec.config.section(dsn)
+system = tdsqlConfig['system']
 
 if __name__ == '__main__':
     unittest.main()

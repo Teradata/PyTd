@@ -76,5 +76,5 @@ BEGIN
     )
     ;
 
-END
+END;
 ;;

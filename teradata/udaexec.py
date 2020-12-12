@@ -1,6 +1,6 @@
 """ A Python Database API Specification v2.0 implementation that provides
  configuration loading, variable substitution, logging, query banding,
- etc and options to use either ODBC or REST"""
+ etc and options to use either Teradata Python Driver"""
 
 # The MIT License (MIT)
 #
@@ -27,8 +27,10 @@
 import atexit
 import codecs
 import collections
+import configparser
 import datetime
 import getpass
+import locale
 import logging
 import os.path
 import platform
@@ -37,24 +39,14 @@ import subprocess
 import sys
 import time
 
-from . import tdodbc, util, api, datatypes
-from . import tdrest  # @UnresolvedImport
-from .util import toUnicode
+from . import tdsql, util, api, datatypes
 from .version import __version__  # @UnresolvedImport
 
 
 # The module logger
-logger = logging.getLogger(__name__)
+logger = logging.getLogger (__name__)
 
-METHOD_REST = "rest"
-METHOD_ODBC = "odbc"
-
-# Implement python version specific setup.
-if sys.version_info[0] == 2:
-    import ConfigParser as configparser  # @UnresolvedImport #@UnusedImport
-else:
-    import configparser  # @UnresolvedImport @UnusedImport @Reimport
-
+METHOD_TERADATASQL = "tdsql"
 
 def handleUncaughtException(exc_type, exc_value, exc_traceback):
     """Make sure that uncaught exceptions are logged"""
@@ -92,7 +84,6 @@ class UdaExec:
                  parseCmdLineArgs=True,
                  gitPath="${gitPath}",
                  production="${production}",
-                 odbcLibPath="${odbcLibPath}",
                  dataTypeConverter=datatypes.DefaultDataTypeConverter()):
         """ Initializes the UdaExec framework """
         # Load configuration files.
@@ -125,17 +116,17 @@ class UdaExec:
                 int(self.config.resolve(logRetention, default="90")), logMsgs)
         # Log messages that were collected prior to logging being configured.
         for (level, msg) in logMsgs:
-            logger.log(level, toUnicode(msg))
+            logger.log(level, msg)
         self._initVersion(self.config.resolve(
             version, default=""), self.config.resolve(gitPath, default=""))
         self._initQueryBands(self.config.resolve(production, default="false"))
         self._initCheckpoint(checkpointFile)
-        self.odbcLibPath = self.config.resolve(odbcLibPath, default="")
         self.dataTypeConverter = dataTypeConverter
         logger.info(self)
         logger.debug(self.config)
         # Register exit function. d
         atexit.register(exiting)
+        # end __init__
 
     def connect(self, externalDSN=None, dataTypeConverter=None, **kwargs):
         """Creates a database connection"""
@@ -155,11 +146,9 @@ class UdaExec:
         if externalDSN:
             paramsToLog['externalDSN'] = externalDSN
         logger.info("Creating connection: %s", paramsToLog)
-        # Determine connection method.
-        method = None
+        method = METHOD_TERADATASQL
         if 'method' in args:
             method = args.pop('method')
-        util.raiseIfNone('method', method)
         if 'queryBands' in args:
             queryBands = args.pop('queryBands')
             self.queryBands.update(queryBands)
@@ -170,17 +159,11 @@ class UdaExec:
         # Create the connection
         try:
             start = time.time()
-            if method.lower() == METHOD_REST:
+            if method.lower() == METHOD_TERADATASQL:
                 conn = UdaExecConnection(
-                    self, tdrest.connect(queryBands=self.queryBands,
-                                         dataTypeConverter=dataTypeConverter,
-                                         **args))
-            elif method.lower() == METHOD_ODBC:
-                conn = UdaExecConnection(
-                    self, tdodbc.connect(queryBands=self.queryBands,
-                                         odbcLibPath=self.odbcLibPath,
-                                         dataTypeConverter=dataTypeConverter,
-                                         **args))
+                    self, tdsql.connect(queryBands=self.queryBands,
+                                        dataTypeConverter=dataTypeConverter,
+                                        **args))
             else:
                 raise api.InterfaceError(
                     api.CONFIG_ERROR,
@@ -193,56 +176,72 @@ class UdaExec:
         except Exception:
             logger.exception("Unable to create connection: %s", paramsToLog)
             raise
+        # end connect
 
     def checkpoint(self, checkpointName=None):
         """ Sets or clears the current checkpoint."""
-        if checkpointName is None:
-            logger.info("Clearing checkpoint....")
-            self.currentCheckpoint = None
-            self.skip = False
-            if self.checkpointManager:
-                self.checkpointManager.clearCheckpoint()
-        else:
-            self.currentCheckpoint = checkpointName
-            if self.skip:
-                if self.resumeFromCheckpoint == self.currentCheckpoint:
-                    logger.info(
-                        "Reached resume checkpoint: \"%s\".  "
-                        "Resuming execution...", checkpointName)
-                    self.skip = False
-            else:
-                logger.info("Reached checkpoint: \"%s\"",  checkpointName)
+        logger.trace ('> enter checkpoint {}'.format (self._log()))
+        try:
+            if checkpointName is None:
+                logger.info("Clearing checkpoint....")
+                self.currentCheckpoint = None
+                self.skip = False
                 if self.checkpointManager:
-                    self.checkpointManager.saveCheckpoint(checkpointName)
+                    self.checkpointManager.clearCheckpoint()
+            else:
+                self.currentCheckpoint = checkpointName
+                if self.skip:
+                    if self.resumeFromCheckpoint == self.currentCheckpoint:
+                        logger.info(
+                            "Reached resume checkpoint: \"%s\".  "
+                            "Resuming execution...", checkpointName)
+                        self.skip = False
+                else:
+                    logger.info("Reached checkpoint: \"%s\"",  checkpointName)
+                    if self.checkpointManager:
+                        self.checkpointManager.saveCheckpoint(checkpointName)
+        finally:
+            logger.trace ('< leave checkpoint {}'.format (self._log()))
+        # end checkpoint
 
     def setCheckpointManager(self, checkpointManager):
         """ Sets a custom Checkpoint Manager. """
-        util.raiseIfNone("checkpointManager", checkpointManager)
-        logger.info("Setting custom checkpoint manager: %s", checkpointManager)
-        self.checkpointManager = checkpointManager
-        logger.info("Loading resume checkpoint from checkpoint manager...")
-        self.setResumeCheckpoint(checkpointManager.loadCheckpoint())
+        logger.trace ('> enter setCheckpointManager {}'.format (self._log()))
+        try:
+            util.raiseIfNone("checkpointManager", checkpointManager)
+            logger.info("Setting custom checkpoint manager: %s", checkpointManager)
+            self.checkpointManager = checkpointManager
+            logger.info("Loading resume checkpoint from checkpoint manager...")
+            self.setResumeCheckpoint(checkpointManager.loadCheckpoint())
+        finally:
+            logger.trace ('< leave setCheckpointManager {}'.format (self._log()))
+        # end setCheckpointManager
 
     def setResumeCheckpoint(self, resumeCheckpoint):
         """ Sets the checkpoint that must be hit for executes to not
          be skipped."""
-        self.resumeFromCheckpoint = resumeCheckpoint
-        if resumeCheckpoint:
-            logger.info(
-                "Resume checkpoint changed to \"%s\".  Skipping all calls to "
-                "execute until checkpoint is reached.",
-                self.resumeFromCheckpoint)
-            self.skip = True
-        else:
-            self.resumeFromCheckpoint = None
-            if self.skip:
-                self.skip = False
+        logger.trace ('> enter setResumeCheckpoint {}'.format (self._log()))
+        try:
+            self.resumeFromCheckpoint = resumeCheckpoint
+            if resumeCheckpoint:
                 logger.info(
-                    "Resume checkpoint cleared.  Execute calls will "
-                    "no longer be skipped.")
+                    "Resume checkpoint changed to \"%s\".  Skipping all calls to "
+                    "execute until checkpoint is reached.",
+                    self.resumeFromCheckpoint)
+                self.skip = True
             else:
-                logger.info(
-                    "No resume checkpoint set, continuing execution...")
+                self.resumeFromCheckpoint = None
+                if self.skip:
+                    self.skip = False
+                    logger.info(
+                        "Resume checkpoint cleared.  Execute calls will "
+                        "no longer be skipped.")
+                else:
+                    logger.info(
+                        "No resume checkpoint set, continuing execution...")
+        finally:
+            logger.trace ('< leave setResumeCheckpoint {}'.format (self._log()))
+        # end setResumeCheckpoint
 
     def _initLogging(self, logDir, logFile, logConsole, level, logRetention,
                      logMsgs):
@@ -256,31 +255,41 @@ class UdaExec:
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         fh = logging.FileHandler(self.logFile, mode="a", encoding="utf8")
         fh.setFormatter(formatter)
-        sh = logging.StreamHandler(sys.stdout)
-        sh.setFormatter(formatter)
+        #sh = logging.StreamHandler(sys.stdout)
+        #sh.setFormatter(formatter)
         root = logging.getLogger()
         if level != logging.NOTSET:
             root.setLevel(level)
         root.addHandler(fh)
         if logConsole:
+            stream = codecs.StreamWriter(sys.stdout, errors="replace")
+            stream.encode = lambda msg, errors="strict": (msg.encode(locale.getpreferredencoding(False), errors).decode(), msg)
+            sh = logging.StreamHandler(stream)
+            sh.setFormatter(formatter)
             root.addHandler(sh)
         sys.excepthook = handleUncaughtException
+        # end _initLogging
 
     def _cleanupLogs(self, logDir, logRetention, logMsgs):
         """Cleanup older log files."""
-        logMsgs.append(
-            (logging.INFO,
-             "Cleaning up log files older than {} days.".format(logRetention)))
-        cutoff = time.time() - (logRetention * 86400)
-        count = 0
-        for f in os.listdir(logDir):
-            f = os.path.join(logDir, f)
-            if os.stat(f).st_mtime < cutoff:
-                logMsgs.append(
-                    (logging.DEBUG, "Removing log file: {}".format(f)))
-                os.remove(f)
-                count += 1
-        logMsgs.append((logging.INFO, "Removed {} log files.".format(count)))
+        logger.trace ('> enter _cleanupLogs {}'.format (self._log()))
+        try:
+            logMsgs.append(
+                (logging.INFO,
+                "Cleaning up log files older than {} days.".format(logRetention)))
+            cutoff = time.time() - (logRetention * 86400)
+            count = 0
+            for f in os.listdir(logDir):
+                f = os.path.join(logDir, f)
+                if os.stat(f).st_mtime < cutoff:
+                    logMsgs.append(
+                        (logging.DEBUG, "Removing log file: {}".format(f)))
+                    os.remove(f)
+                    count += 1
+            logMsgs.append((logging.INFO, "Removed {} log files.".format(count)))
+        finally:
+            logger.trace ('< leave _cleanupLogs {}'.format (self._log()))
+        # end _cleanupLogs
 
     def _initRunNumber(self, runNumberFile, runNumber, logMsgs):
         """Initialize the run number unique to this particular execution."""
@@ -350,6 +359,7 @@ class UdaExec:
             self.checkpointManager = None
             self.resumeFromCheckpoint = None
             logger.info("Checkpoint file disabled.")
+        # end _initCheckpoint
 
     def _initVersion(self, version, gitPath):
         """Initialize the version and GIT revision."""
@@ -384,6 +394,7 @@ class UdaExec:
                 "passed in as a parameter, specified in a config file, "
                 "or pulled from a git repository.")
         self.config['version'] = version
+        # end _initVersion
 
     def _initQueryBands(self, production):
         """Initialize the Query Band that will be set on future connections."""
@@ -401,29 +412,30 @@ class UdaExec:
             self.queryBands['gitDirty'] = self.gitDirty
         self.queryBands['UtilityName'] = 'PyTd'
         self.queryBands['UtilityVersion'] = __version__
+        # end _initQueryBands
 
     def __str__(self):
         value = u"Execution Details:\n/"
         value += u'*' * 80
         value += u"\n"
         value += u" * Application Name: {}\n".format(
-            toUnicode(self.config['appName']))
+            self.config['appName'])
         value += u" *          Version: {}\n".format(
-            toUnicode(self.config['version']))
-        value += u" *       Run Number: {}\n".format(toUnicode(self.runNumber))
+            self.config['version'])
+        value += u" *       Run Number: {}\n".format(self.runNumber)
         value += u" *             Host: {}\n".format(
-            toUnicode(platform.node()))
+            platform.node())
         value += u" *         Platform: {}\n".format(
             platform.platform(aliased=True))
         value += u" *          OS User: {}\n".format(
-            toUnicode(getpass.getuser()))
+            getpass.getuser())
         value += u" *   Python Version: {}\n".format(platform.python_version())
         value += u" *  Python Compiler: {}\n".format(
             platform.python_compiler())
         value += u" *     Python Build: {}\n".format(platform.python_build())
         value += u" *  UdaExec Version: {}\n".format(__version__)
-        value += u" *     Program Name: {}\n".format(toUnicode(sys.argv[0]))
-        value += u" *      Working Dir: {}\n".format(toUnicode(os.getcwd()))
+        value += u" *     Program Name: {}\n".format(sys.argv[0])
+        value += u" *      Working Dir: {}\n".format(os.getcwd())
         if self.gitRevision:
             value += u" *      Git Version: {}\n".format(self.gitVersion)
             value += u" *     Git Revision: {}\n".format(self.gitRevision)
@@ -432,24 +444,28 @@ class UdaExec:
                 ",".join(self.modifiedFiles) + "]")
         if self.configureLogging:
             value += u" *          Log Dir: {}\n".format(
-                toUnicode(self.logDir))
+                self.logDir)
             value += u" *         Log File: {}\n".format(
-                toUnicode(self.logFile))
+                self.logFile)
         value += u" *     Config Files: {}\n".format(
-            toUnicode(self.config.configFiles))
+            self.config.configFiles)
         value += u" *      Query Bands: {}\n".format(
-            u";".join(u"{}={}".format(toUnicode(k), toUnicode(v))
+            u";".join(u"{}={}".format(k, v)
                       for k, v in self.queryBands.items()))
         value += '*' * 80
         value += '/'
         return value
 
+    def _log (self):
+        return "{} appName={}".format(self.__class__.__name__, self.config['appName'])
+
+    #end class UdaExec
 
 def _appendConfigFiles(configFiles, *args):
     for arg in args:
         if arg is None:
             continue
-        if util.isString(arg):
+        if isinstance(arg, str):
             configFiles.append(arg)
         else:
             configFiles.extend(arg)
@@ -486,14 +502,14 @@ class UdaExecCheckpointManagerFileImpl (UdaExecCheckpointManager):
     def loadCheckpoint(self):
         resumeFromCheckpoint = None
         if os.path.isfile(self.file):
-            logger.info(u"Found checkpoint file: \"%s\"", toUnicode(self.file))
+            logger.info(u"Found checkpoint file: \"%s\"", self.file)
             with open(self.file, "r") as f:
                 resumeFromCheckpoint = f.readline()
             if not resumeFromCheckpoint:
                 logger.warn(
-                    u"No checkpoint found in %s.", toUnicode(self.file))
+                    u"No checkpoint found in %s.", self.file)
         else:
-            logger.info(u"Checkpoint file not found: %s", toUnicode(self.file))
+            logger.info(u"Checkpoint file not found: %s", self.file)
         return resumeFromCheckpoint
 
     def saveCheckpoint(self, checkpointName):
@@ -523,8 +539,8 @@ class UdaExecConfig:
         configParser = configparser.ConfigParser()
         configParser.optionxform = str
         configFiles = [os.path.expanduser(f) for f in configFiles]
-        self.configFiles = [toUnicode(os.path.abspath(
-            f)) + (": Found" if os.path.isfile(f) else ": Not Found")
+        self.configFiles = [os.path.abspath(
+            f) + (": Found" if os.path.isfile(f) else ": Not Found")
             for f in configFiles]
         logMsgs.append(
             (logging.INFO,
@@ -546,8 +562,8 @@ class UdaExecConfig:
                     key = key[2:]
                     logMsgs.append(
                         (logging.DEBUG, u"Configuration value was set via "
-                         "command line: {}={}".format(toUnicode(key),
-                                                      toUnicode(val))))
+                         "command line: {}={}".format(key,
+                                                      val)))
                     self.sections[configSection][key] = val
 
     def __iter__(self):
@@ -560,7 +576,7 @@ class UdaExecConfig:
         if sections is None:
             sections = [self.configSection]
         for key, value in d.items():
-            if util.isString(value):
+            if isinstance(value, str):
                 d[key] = self._resolve(value, sections, None, None)
         return d
 
@@ -570,7 +586,7 @@ class UdaExecConfig:
                 raise api.InterfaceError(api.CONFIG_ERROR, errorMsg)
             else:
                 util.raiseIfNone("value", value)
-        if not util.isString(value):
+        if not isinstance(value, str):
             return value
         if sections is None:
             sections = [self.configSection]
@@ -627,9 +643,8 @@ class UdaExecConfig:
         value += u'*' * 80
         value += u"\n"
         for key in sorted(self.sections[self.configSection]):
-            value += u" * {}: {}\n".format(toUnicode(key.rjust(length)),
-                                           toUnicode(
-                                               self.resolve("${" + key + "}"))
+            value += u" * {}: {}\n".format(key.rjust(length),
+                                               self.resolve("${" + key + "}")
                                            if 'password' not in key.lower()
                                            else u'XXXX')
         value += '*' * 80
@@ -639,7 +654,7 @@ class UdaExecConfig:
 
 class UdaExecConnection:
 
-    """A UdaExec connection wrapper for ODBC or REST connections."""
+    """A UdaExec connection wrapper for Teradata Python Driver."""
 
     def __init__(self, udaexec, conn):
         self.udaexec = udaexec
@@ -682,7 +697,7 @@ class UdaExecConnection:
 
 class UdaExecCursor:
 
-    """A UdaExec cursor wrapper for ODBC or REST cursors."""
+    """A UdaExec cursor wrapper for teradatasql cursors."""
 
     def __init__(self, udaexec, cursor):
         self.udaexec = udaexec
@@ -741,7 +756,7 @@ class UdaExecCursor:
         if file is None:
             util.raiseIfNone("query", query)
         if query is not None:
-            if util.isString(query):
+            if isinstance(query, str):
                 self._execute(self.cursor.execute, query, params, **kwargs)
             else:
                 for q in query:
