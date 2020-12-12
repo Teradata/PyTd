@@ -954,7 +954,7 @@ is not supported by the teradatasql driver, an error will be returned.
   | **password**          | The Database password to use to connect.              | None |
   | **database**          | The default database name to apply to the session     | None |
   | **autoCommit**        | Enables or disables auto commit mode. When auto commit mode is disabled, transactions must be committed manually.                                        | True |
-  | **transactionMode**   | The transaction mode to use i.e. "Teradata" or "ANSI" | *Teradata* |
+  | **transactionMode**   | The transaction mode to use i.e. "Teradata" or "ANSI" | The default tranaction mode configured for the Teradata Database |
   | **queryBands**        | A map (dict) of query band key/value pairs to include the session's QueryBand. | None |
   | **dataTypeConverter** | The DataTypeConverter implementation to use to convert data types from their string representation to python objects. | datatypes.DefaultDataTypeConverter() |
   | **\*\*kwargs**        | A variable number of name/value pairs to append to the ConnectString passed to the Teradata SQL Driver for Python. For a full list of connection parameters offered, refer to the [Connection Parameters Section](https://github.com/Teradata/python-driver#ConnectionParameters) in the Teradata SQL Driver for Python `README.md`. | None |
