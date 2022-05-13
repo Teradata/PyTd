@@ -275,7 +275,7 @@ class UdaExec:
         count = 0
         for f in os.listdir(logDir):
             f = os.path.join(logDir, f)
-            if os.stat(f).st_mtime < cutoff:
+            if os.path.isfile(f) and os.stat(f).st_mtime < cutoff:
                 logMsgs.append(
                     (logging.DEBUG, "Removing log file: {}".format(f)))
                 os.remove(f)

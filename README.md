@@ -13,7 +13,7 @@ The module is hosted on PyPi: https://pypi.python.org/pypi/teradata
 DOCUMENTATION
 -------------
 
-Documentation for the Teradata Python Module is available on the <a href="https://developer.teradata.com/tools/reference/teradata-python-module">Teradata Developer Exchange</a>.
+Documentation for the Teradata Python Module is available on the <a href="https://downloads.teradata.com/tools/reference/teradata-python-module">Teradata Downloads site</a>.
 
 UNIT TESTS
 ----------
