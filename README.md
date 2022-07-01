@@ -1,3 +1,9 @@
+
+Deprecation notice
+====
+The driver/package has been deprecated. For new Python driver implementations consider using https://github.com/Teradata/python-driver.
+
+
 Teradata Python DevOps Module      [![Build Status](https://travis-ci.org/Teradata/PyTd.svg?branch=master)](https://travis-ci.org/Teradata/PyTd)
 =============================
 
