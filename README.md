@@ -1,4 +1,6 @@
 
+[![No Maintenance Intended](http://unmaintained.tech/badge.svg)](http://unmaintained.tech/)
+
 Deprecation notice
 ====
 The driver/package has been deprecated. For new Python driver implementations consider using https://github.com/Teradata/python-driver.
